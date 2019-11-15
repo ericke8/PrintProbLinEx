@@ -27,13 +27,13 @@ Clone the repo:
 ## Instructions to run:
 1. Move into the repo directory and run `rowsumdump.py` with the `.tif` image file of your choice
     - `cd PrintProbLinEx`
-    - `python rowsumdump.py FILENAME`
+    - `python rowsumdump.py NameOfTheFileYouChose.tif`
     
-It will output a file with `FILENAME.csv`, which contains the rowsums
+It will output a file with `NameOfTheFileYouChose.csv`, which contains the rowsums
 
 2. Run `line_splines.R` with the rowsums csv file
-    - `Rscript ./line_splines.R ./FILENAME.csv`  
+    - `Rscript ./line_splines.R ./NameOfTheFileYouChose.csv`  
     
-This will output another file named `FILENAME_lines.csv`, which contains the start and end indexes for each line
+This will output another file named `NameOfTheFileYouChose_lines.csv`, which contains the start and end indexes for each line
 
 3. Open up `cutLines.ipynb` and run through the cells, changing file names when necessary
