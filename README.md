@@ -3,7 +3,7 @@ Authors: Eric Ke, Jason Vega, Annie Wong, Nidhi Giridhar
 
 Code repo for proposed solution #1 toward text line extraction
 
-Clone the repo:
+Clone the repo:  
 `git clone https://github.com/ericke8/PrintProbLinEx.git`
 
 ## Setup:
@@ -32,7 +32,7 @@ Clone the repo:
 It will output a file with `FILENAME.csv`, which contains the rowsums
 
 2. Run `line_splines.R` with the rowsums csv file
-    - `Rscript ./line_splines.R ./FILENAME.csv`
+    - `Rscript ./line_splines.R ./FILENAME.csv  
 This will output another file named `FILENAME_lines.csv`, which contains the start and end indexes for each line
 
 3. Open up `cutLines.ipynb` and run through the cells, changing file names when necessary
