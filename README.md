@@ -32,7 +32,7 @@ Clone the repo:
 It will output a file with `FILENAME.csv`, which contains the rowsums
 
 2. Run `line_splines.R` with the rowsums csv file
-    - `Rscript ./line_splines.R ./FILENAME.csv  
+    - `Rscript ./line_splines.R ./FILENAME.csv`  
     
 This will output another file named `FILENAME_lines.csv`, which contains the start and end indexes for each line
 
