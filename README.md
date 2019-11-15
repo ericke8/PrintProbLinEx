@@ -3,11 +3,12 @@ Authors: Eric Ke, Jason Vega, Annie Wong, Nidhi Giridhar
 
 Code repo for proposed solution #1 toward text line extraction
 
-Clone the repo: `git clone https://github.com/ericke8/PrintProbLinEx.git`
+Clone the repo:
+`git clone https://github.com/ericke8/PrintProbLinEx.git`
 
 ## Setup:
 - Make sure to have R and Python 3 installed
-- Order of pipeline so far:
+- Order so far:
     - rowsumdump.py
     - line_splines.R
     - cutLines.ipynb
