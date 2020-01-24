@@ -37,3 +37,7 @@ It will output a file with `NameOfTheFileYouChose.csv`, which contains the rowsu
 This will output another file named `NameOfTheFileYouChose_lines.csv`, which contains the start and end indexes for each line
 
 3. Open up `cutLines.ipynb` and run through the cells, changing file names when necessary
+
+
+## Method 2: Trough Finding:
+1. 
