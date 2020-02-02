@@ -38,6 +38,12 @@ This will output another file named `NameOfTheFileYouChose_lines.csv`, which con
 
 3. Open up `cutLines.ipynb` and run through the cells, changing file names when necessary
 
+# Running in batches:
+Same as above, but using `batch_rowsumdump.py` with a directory as input (where your images are)
+
+This will create a new folder called `rowsumdump` in the image directory with all the csv
+
+Then, use `./batch_line_splines.R` with the `rowsumdump` directory as input, so it processes all the images into cuts
 
 ## Method 2: Trough Finding:
 1. 
