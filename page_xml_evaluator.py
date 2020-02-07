@@ -1,3 +1,14 @@
+'''
+Line segmentation evaluation tool for PAGE XML data. Evaluation metrics are 
+detection accuracy, recognition accuracy and F-measure, all based on the 
+intersection over union (IU) score.
+
+NOTE: NAMESPACE_PRED and NAMESPACE_GT may need to be modified if XML data for
+predictions and/or ground truth use different schemas.
+
+Author: Jason Vega
+'''
+
 from __future__ import division
 import cv2
 import matplotlib.pyplot as plt
@@ -87,8 +98,7 @@ def get_intersection_over_union(first, second):
 '''
 Returns the number of one-to-one matches between the predicted lines and ground truth.
 A one-to-one match occurs when the matchscore between two lines is greater than the 
-specified threshold.hresh = 127
-im_bw = cv2.threshold(im_gray, thresh, 255, cv2.THRESH_BINARY)[1]
+specified threshold.
 
 pred_lines: a list of coordinates for predicted lines.
 gt_lines: a list of coordinates for ground truth lines.
