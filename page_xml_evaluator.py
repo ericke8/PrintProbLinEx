@@ -3,6 +3,9 @@ Line segmentation evaluation tool for PAGE XML data. Evaluation metrics are
 detection accuracy, recognition accuracy and F-measure, all based on the 
 intersection over union (IU) score.
 
+For each prediction file being evaluated, the corresponding image file and 
+ground truth file must have the same name as the prediction_file.
+
 NOTE: NAMESPACE_PRED and NAMESPACE_GT may need to be modified if XML data for
 predictions and/or ground truth use different schemas.
 
@@ -28,7 +31,7 @@ GT_DIR_OPT = 1
 
 DATA_EXTENSION = ".xml"
 IMAGE_EXTENSION = ".tif"
-RESULTS_FILE = "results.txt"
+RESULTS_FILE = "results.csv"
 
 PAGE_TAG = "ns0:Page"
 TEXTREGION_TAG = "ns0:TextRegion"
@@ -200,6 +203,7 @@ def main(argv):
 
     if out_dir:
         results_file = open(out_dir + RESULTS_FILE, 'w+')
+        results_file.write("File,Detection Accuracy,Recognition Accuracy,F-measure\n")
 
     skipped_evals = []
     detection_accuracy = 0
@@ -220,7 +224,7 @@ def main(argv):
         # If the ground truth file is not found, then we skip evaluation of the current prediction file
         try:
             gt_page = et.parse(gt_dir + gt_filename).getroot().find(PAGE_TAG, NAMESPACE_GT)
-        except:
+        except IOError:
             skipped_evals.append(predFile)
             continue
 
@@ -241,25 +245,19 @@ def main(argv):
         if image_dir and image.size != 0:
             cv2.imwrite(out_dir + image_filename, output_image(image, pred_lines, gt_lines))
 
-        eval_output = "DA: " + str(result[0]) + ", RA: " + str(result[1]) + ", F: " + \
-              str(result[2]) + "\n"
-
         if out_dir:
-            results_file.write(eval_output)
+            results_file.write(predFile + "," + str(result[0]) + "," + str(result[1]) + \
+                    "," + str(result[2]) + "\n")
 
-        print(eval_output)
+        print("DA: " + str(result[0]) + ", RA: " + str(result[1]) + ", F: " + \
+                str(result[2]) + "\n")
 
     detection_accuracy /= evaluated
     recognition_accuracy /= evaluated
     f_measure /= evaluated
 
-    eval_output = "\n--- Global Results ---\nDA: " + str(detection_accuracy) + ", RA: " + \
-            str(recognition_accuracy) + ", F: " + str(f_measure)
-
-    if out_dir:
-        results_file.write(eval_output)
-
-    print(eval_output)
+    print("\n--- Global Results ---\nDA: " + str(detection_accuracy) + ", RA: " + \
+            str(recognition_accuracy) + ", F: " + str(f_measure))
 
     if len(skipped_evals) > 0:
         print("\nSkipped evaluations (" + str(len(skipped_evals)) + "):\n")
