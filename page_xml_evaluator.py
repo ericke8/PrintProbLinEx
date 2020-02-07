@@ -4,7 +4,10 @@ detection accuracy, recognition accuracy and F-measure, all based on the
 intersection over union (IU) score.
 
 For each prediction file being evaluated, the corresponding image file and 
-ground truth file must have the same name as the prediction_file.
+ground truth file must have the same name as the prediction_file. Only 
+the prediction XML files should exist in their directory. The imageWidth 
+and imageHeight attributes on the Page element should be the same for the
+predicted and corresponding ground truth XML file.
 
 NOTE: NAMESPACE_PRED and NAMESPACE_GT may need to be modified if XML data for
 predictions and/or ground truth use different schemas.
@@ -53,7 +56,7 @@ FIGURE_SIZE = 35
 
 NAMESPACE_PRED = {"ns0": "http://schema.primaresearch.org/PAGE/gts/pagecontent/2019-07-15",
       "xsi": "http://www.w3.org/2001/XMLSchema-instance"}
-NAMESPACE_GT = {"ns0": "http://schema.primaresearch.org/PAGE/gts/pagecontent/2019-07-15",
+NAMESPACE_GT = {"ns0": "http://schema.primaresearch.org/PAGE/gts/pagecontent/2013-07-15",
       "xsi": "http://www.w3.org/2001/XMLSchema-instance"}
 
 '''
@@ -228,15 +231,22 @@ def main(argv):
             skipped_evals.append(predFile)
             continue
 
-        image_width = int(gt_page.get(WIDTH_TAG))
-        image_height = int(gt_page.get(HEIGHT_TAG))
+        gt_image_width = int(gt_page.get(WIDTH_TAG))
+        gt_image_height = int(gt_page.get(HEIGHT_TAG))
+        pred_image_width = int(pred_page.get(WIDTH_TAG))
+        pred_image_height = int(pred_page.get(HEIGHT_TAG))
+
+        # Skip evaluation if image dimensions do not match
+        if gt_image_width != pred_image_width or gt_image_height != pred_image_height:
+            skipped_evals.append(predFile)
+            continue
 
         print("Evaluating " + predFile + "...")
 
         pred_lines = get_line_coords(pred_page, NAMESPACE_PRED)
         gt_lines = get_line_coords(gt_page, NAMESPACE_GT)
 
-        result = evaluate(pred_lines, gt_lines, (image_height, image_width))
+        result = evaluate(pred_lines, gt_lines, (gt_image_height, gt_image_width))
         detection_accuracy += result[0]
         recognition_accuracy += result[1]
         f_measure += result[2]
