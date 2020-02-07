@@ -137,9 +137,14 @@ image: the document image.
 '''
 def evaluate(pred_lines, gt_lines, image):
     matches = get_one_to_one_matches(pred_lines, gt_lines, image)
-    detection_accuracy = matches / len(gt_lines)
-    recognition_accuracy = 0 if not pred_lines else (matches / len(pred_lines))
-    f_measure = 2 * matches / (len(pred_lines) + len(gt_lines))
+    detection_accuracy = 1 if not len(gt_lines) else (matches / len(gt_lines))
+    recognition_accuracy = 1 if not len(pred_lines) else (matches / len(pred_lines))
+    f_measure = 0
+    
+    if not len(pred_lines) and not len(gt_lines):
+        f_measure = 1
+    else:
+        f_measure = 2 * matches / (len(pred_lines) + len(gt_lines))
     
     return (detection_accuracy, recognition_accuracy, f_measure)
 
