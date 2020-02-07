@@ -87,8 +87,7 @@ def get_intersection_over_union(first, second):
 '''
 Returns the number of one-to-one matches between the predicted lines and ground truth.
 A one-to-one match occurs when the matchscore between two lines is greater than the 
-specified threshold.hresh = 127
-im_bw = cv2.threshold(im_gray, thresh, 255, cv2.THRESH_BINARY)[1]
+specified threshold.
 
 pred_lines: a list of coordinates for predicted lines.
 gt_lines: a list of coordinates for ground truth lines.
