@@ -186,7 +186,7 @@ def main(argv):
         gt_dir = args[GT_DIR_OPT] + "/" if args[GT_DIR_OPT][-1] != "/" \
                 else args[GT_DIR_OPT]
     except getopt.GetoptError:
-        print("Usage: page_xml_evaluator.py -o out_dir -i image_dir pred_dir gt_dir\n")
+        print("Usage: python3 page_xml_evaluator.py -o out_dir -i image_dir pred_dir gt_dir\n")
         print("pred_dir - the directory containing the XML files to evaluate.")
         print("gt_dir - the directory containing the ground truth XML files.\n")
         print("Optional flags:\n")
