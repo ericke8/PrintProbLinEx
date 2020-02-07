@@ -56,7 +56,7 @@ FIGURE_SIZE = 35
 
 NAMESPACE_PRED = {"ns0": "http://schema.primaresearch.org/PAGE/gts/pagecontent/2019-07-15",
       "xsi": "http://www.w3.org/2001/XMLSchema-instance"}
-NAMESPACE_GT = {"ns0": "http://schema.primaresearch.org/PAGE/gts/pagecontent/2013-07-15",
+NAMESPACE_GT = {"ns0": "http://schema.primaresearch.org/PAGE/gts/pagecontent/2019-07-15",
       "xsi": "http://www.w3.org/2001/XMLSchema-instance"}
 
 '''
