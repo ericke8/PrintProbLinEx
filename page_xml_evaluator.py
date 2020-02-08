@@ -31,6 +31,7 @@ IMAGE_DIR_OPT = "-i"
 OPTIONS = "o:i:"
 PRED_DIR_OPT = 0
 GT_DIR_OPT = 1
+ARGS = 2
 
 DATA_EXTENSION = ".xml"
 IMAGE_EXTENSION = ".tif"
@@ -172,6 +173,11 @@ def output_image(image, pred_lines, gt_lines):
     
     return image
 
+'''
+Process command line arguments and run evaluations.
+
+argv: command line arguments.
+'''
 def main(argv):
     image_dir = ""
     pred_dir = ""
@@ -181,6 +187,9 @@ def main(argv):
     # Parse command line args
     try:
         opts, args = getopt.getopt(argv, OPTIONS)
+
+        if len(args) != ARGS:
+            raise getopt.GetoptError("Invalid number of arguments specified.")
 
         for opt, arg in opts:
             if opt == OUTPUT_DIR_OPT:
@@ -207,72 +216,138 @@ def main(argv):
                 "in output. The -o flag must also be set. image_dir is the directory containing " + \
                 "the document images.")
 
-        sys.exit(2)
+        sys.exit()
+
+    results_file = None
+    results_output = out_dir != ""
 
     if out_dir:
-        results_file = open(out_dir + RESULTS_FILE, 'w+')
-        results_file.write("File,Detection Accuracy,Recognition Accuracy,F-measure\n")
+        try:
+            results_file = open(out_dir + RESULTS_FILE, 'w+')
+            results_file.write("File,Detection Accuracy,Recognition " + \
+                    "Accuracy,F-measure\n")
+        except FileNotFoundError:
+            print("Could not open " + out_dir + RESULTS_FILE + " for " + \
+                    "writing. Check that the specified output directory " + \
+                    "exists.\n")
+            results_output = False
 
     skipped_evals = []
     detection_accuracy = 0
     recognition_accuracy = 0
     f_measure = 0
     evaluated = 0
+    image = None
 
-    for predFile in os.listdir(pred_dir):
-        image_filename = predFile.replace(DATA_EXTENSION, IMAGE_EXTENSION)
-        gt_filename = predFile.replace(IMAGE_EXTENSION, DATA_EXTENSION)
+    try: 
+        file_names = os.listdir(pred_dir)
 
-        if image_dir:
-            image = cv2.imread(image_dir + image_filename)
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        if file_names:
+            file_names.sort()
 
-        pred_page = et.parse(pred_dir + predFile).getroot().find(PAGE_TAG, NAMESPACE_PRED)
+        for pred_file in file_names:
+            image_filename = pred_file.replace(DATA_EXTENSION, IMAGE_EXTENSION)
+            gt_filename = pred_file.replace(IMAGE_EXTENSION, DATA_EXTENSION)
+            image_output = True
 
-        # If the ground truth file is not found, then we skip evaluation of the current prediction file
-        try:
-            gt_page = et.parse(gt_dir + gt_filename).getroot().find(PAGE_TAG, NAMESPACE_GT)
-        except IOError:
-            skipped_evals.append(predFile)
-            continue
+            if out_dir and image_dir:
+                try:
+                    image = cv2.imread(image_dir + image_filename)
+                    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                except cv2.error:
+                    print("Image file " + image_dir + image_filename + 
+                            " could not be read. Skipping image output.\n")
+                    image_output = False
 
-        gt_image_width = int(gt_page.get(WIDTH_TAG))
-        gt_image_height = int(gt_page.get(HEIGHT_TAG))
-        pred_image_width = int(pred_page.get(WIDTH_TAG))
-        pred_image_height = int(pred_page.get(HEIGHT_TAG))
+            pred_page = None
+            
+            # Skip evaluation if prediction file cannot be opened or parsed.
+            try:
+                pred_page = et.parse(pred_dir + pred_file).getroot() \
+                    .find(PAGE_TAG, NAMESPACE_PRED)
+            except IOError:
+                print("Could not open " + pred_dir + pred_file + \
+                        ". Skipping evaluation.\n")
+                skipped_evals.append(pred_file)
+                continue
+            except et.ParseError:
+                print("Could not parse " + pred_dir + pred_file + \
+                        ". Skipping evaluation.\n")
+                skipped_evals.append(pred_file)
+                continue
 
-        # Skip evaluation if image dimensions do not match
-        if gt_image_width != pred_image_width or gt_image_height != pred_image_height:
-            skipped_evals.append(predFile)
-            continue
+            gt_page = None
 
-        print("Evaluating " + predFile + "...")
+            # Skip evaluation if ground truth files cannot be parsed or opened.
+            try:
+                gt_page = et.parse(gt_dir + gt_filename).getroot().find(PAGE_TAG,
+                        NAMESPACE_GT)
+            except IOError:
+                print("Could not open " + gt_dir + gt_filename + \
+                        ". Skipping evaluation.\n")
+                skipped_evals.append(pred_file)
+                continue
+            except et.ParseError:
+                print("Could not parse " + gt_dir + gt_filename + \
+                        ". Skipping evaluation.\n")
+                skipped_evals.append(pred_file)
+                continue
 
-        pred_lines = get_line_coords(pred_page, NAMESPACE_PRED)
-        gt_lines = get_line_coords(gt_page, NAMESPACE_GT)
+            gt_image_width = int(gt_page.get(WIDTH_TAG))
+            gt_image_height = int(gt_page.get(HEIGHT_TAG))
+            pred_image_width = int(pred_page.get(WIDTH_TAG))
+            pred_image_height = int(pred_page.get(HEIGHT_TAG))
 
-        result = evaluate(pred_lines, gt_lines, (gt_image_height, gt_image_width))
-        detection_accuracy += result[0]
-        recognition_accuracy += result[1]
-        f_measure += result[2]
-        evaluated += 1
+            # Skip evaluation if image dimensions do not match
+            if gt_image_width != pred_image_width or \
+                gt_image_height != pred_image_height:
+                print("Ground truth and prediction image dimensions do " + \
+                        "not match. Skipping evaluation. \n")
+                skipped_evals.append(pred_file)
+                continue
 
-        if image_dir and image.size != 0:
-            cv2.imwrite(out_dir + image_filename, output_image(image, pred_lines, gt_lines))
+            print("Evaluating " + pred_file + "...")
 
-        if out_dir:
-            results_file.write(predFile + "," + str(result[0]) + "," + str(result[1]) + \
-                    "," + str(result[2]) + "\n")
+            pred_lines = get_line_coords(pred_page, NAMESPACE_PRED)
+            gt_lines = get_line_coords(gt_page, NAMESPACE_GT)
 
-        print("DA: " + str(result[0]) + ", RA: " + str(result[1]) + ", F: " + \
-                str(result[2]) + "\n")
+            result = evaluate(pred_lines, gt_lines, 
+                    (gt_image_height, gt_image_width))
+            detection_accuracy += result[0]
+            recognition_accuracy += result[1]
+            f_measure += result[2]
+            evaluated += 1
 
-    detection_accuracy /= evaluated
-    recognition_accuracy /= evaluated
-    f_measure /= evaluated
+            if out_dir and image_output and image.size:
+                try:
+                    cv2.imwrite(out_dir + image_filename, output_image(image, 
+                        pred_lines, gt_lines))
+                except cv2.error:
+                    print("Image file " + out_dir + image_filename + \
+                            " could not be wrriten to. Skipping image " + \
+                            "output. \n")
 
-    print("\n--- Global Results ---\nDA: " + str(detection_accuracy) + ", RA: " + \
-            str(recognition_accuracy) + ", F: " + str(f_measure))
+            if results_output:
+                results_file.write(pred_file + "," + str(result[0]) + "," + 
+                        str(result[1]) + "," + str(result[2]) + "\n")
+
+            print("DA: " + str(result[0]) + ", RA: " + str(result[1]) + ", F: " + \
+                    str(result[2]) + "\n")
+    except FileNotFoundError:
+        print("Directory " + pred_dir + " not found. Aborting evaluation.")
+        sys.exit()
+
+    if evaluated:
+        detection_accuracy /= evaluated
+        recognition_accuracy /= evaluated
+        f_measure /= evaluated
+    else:
+        print("\nNo files evaluated. Check that the ground truth directory " + \
+            "exists and contains valid files.")
+        sys.exit()
+
+    print("\n--- Global Results ---\nDA: " + str(detection_accuracy) + 
+            ", RA: " + str(recognition_accuracy) + ", F: " + str(f_measure))
 
     if len(skipped_evals) > 0:
         print("\nSkipped evaluations (" + str(len(skipped_evals)) + "):\n")
@@ -280,7 +355,7 @@ def main(argv):
     for file_name in skipped_evals:
         print(file_name)
     
-    if out_dir:
+    if results_output:
         results_file.close()
 
 
