@@ -55,10 +55,15 @@ GT_LINE_COLOR = (0, 255, 0)
 LINES_CLOSED = True
 FIGURE_SIZE = 35
 
-NAMESPACE_PRED = {"ns0": "http://schema.primaresearch.org/PAGE/gts/pagecontent/2019-07-15",
-      "xsi": "http://www.w3.org/2001/XMLSchema-instance"}
-NAMESPACE_GT = {"ns0": "http://schema.primaresearch.org/PAGE/gts/pagecontent/2019-07-15",
-      "xsi": "http://www.w3.org/2001/XMLSchema-instance"}
+NAMESPACE_PRED = {
+    "ns0": "http://schema.primaresearch.org/PAGE/gts/pagecontent/2019-07-15",
+    "xsi": "http://www.w3.org/2001/XMLSchema-instance"
+}
+
+NAMESPACE_GT = {
+    "ns0": "http://schema.primaresearch.org/PAGE/gts/pagecontent/2019-07-15",
+    "xsi": "http://www.w3.org/2001/XMLSchema-instance"
+}
 
 '''
 Returns a list of the text line coordinates for the entire page.
