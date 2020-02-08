@@ -15,7 +15,6 @@ predictions and/or ground truth use different schemas.
 Author: Jason Vega
 '''
 
-from __future__ import division
 import cv2
 import matplotlib.pyplot as plt
 import os
@@ -201,6 +200,8 @@ def main(argv):
                 out_dir = arg + "/" if arg[-1] != "/" else arg
             elif opt == IMAGE_DIR_OPT:
                 image_dir = arg + "/" if arg[-1] != "/" else arg
+            else:
+                raise getopt.GetoptError("Unrecognized option passed.")
 
 
         if image_dir and not out_dir:
