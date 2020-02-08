@@ -107,9 +107,9 @@ def get_intersection_over_union(first, second):
     return intersection_score / union_score
 
 '''
-Returns the number of one-to-one matches between the predicted lines and ground truth.
-A one-to-one match occurs when the matchscore between two lines is greater than the 
-specified threshold.
+Returns the number of one-to-one matches between the predicted lines and ground 
+truth. A one-to-one match occurs when the matchscore between two lines is 
+greater than the specified threshold.
 
 pred_lines: a list of coordinates for predicted lines.
 gt_lines: a list of coordinates for ground truth lines.
@@ -134,7 +134,8 @@ def get_one_to_one_matches(pred_lines, gt_lines, shape):
     return matches
 
 '''
-Returns the detection accuracy, recognition accuracy and F-measure for a given document.
+Returns the detection accuracy, recognition accuracy and F-measure for a given 
+document.
 
 pred_lines: a list of coordinates for predicted lines.
 gt_lines: a list of coordinates for ground truth lines.
@@ -143,7 +144,8 @@ image: the document image.
 def evaluate(pred_lines, gt_lines, image):
     matches = get_one_to_one_matches(pred_lines, gt_lines, image)
     detection_accuracy = 1 if not len(gt_lines) else (matches / len(gt_lines))
-    recognition_accuracy = 1 if not len(pred_lines) else (matches / len(pred_lines))
+    recognition_accuracy = 1 if not len(pred_lines) \
+            else (matches / len(pred_lines))
     f_measure = 0
     
     if not len(pred_lines) and not len(gt_lines):
@@ -154,24 +156,29 @@ def evaluate(pred_lines, gt_lines, image):
     return (detection_accuracy, recognition_accuracy, f_measure)
 
 '''
-Returns the document image with optional overlayed predicted line extractions and ground truth.
+Returns the document image with optional overlayed predicted line extractions 
+and ground truth.
 
 image: the document image.
-pred_lines: a list of coordinates for predicted lines. These will be displayed in green.
-gt_lines: a list of coordinates for ground truth lines. These will be displayed in red.
+pred_lines: a list of coordinates for predicted lines. These will be displayed 
+in green.
+gt_lines: a list of coordinates for ground truth lines. These will be displayed 
+in red.
 '''
 def output_image(image, pred_lines, gt_lines):
     if pred_lines:
         # Draw each predicted line bounding box on image
         for lineCoords in pred_lines:
             lineCoords = np.array(lineCoords, np.int32)
-            image = cv2.polylines(image, [lineCoords], LINES_CLOSED, PRED_LINE_COLOR)
+            image = cv2.polylines(image, [lineCoords], LINES_CLOSED, 
+                    PRED_LINE_COLOR)
                 
     if gt_lines:
         # Draw each ground truth bounding box on image
         for lineCoords in gt_lines:
             lineCoords = np.array(lineCoords, np.int32)
-            image = cv2.polylines(image, [lineCoords], LINES_CLOSED, GT_LINE_COLOR)
+            image = cv2.polylines(image, [lineCoords], LINES_CLOSED, 
+                    GT_LINE_COLOR)
 
     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
     
@@ -205,22 +212,27 @@ def main(argv):
 
 
         if image_dir and not out_dir:
-            raise getopt.GetoptError("-o flag needs to be specfied when -i flag is used")
+            raise getopt.GetoptError("-o flag needs to be specfied when -i " + \
+                    "flag is used")
 
         pred_dir = args[PRED_DIR_OPT] + "/" if args[PRED_DIR_OPT][-1] != "/" \
                 else args[PRED_DIR_OPT]
         gt_dir = args[GT_DIR_OPT] + "/" if args[GT_DIR_OPT][-1] != "/" \
                 else args[GT_DIR_OPT]
     except getopt.GetoptError:
-        print("Usage: python3 page_xml_evaluator.py -o out_dir -i image_dir pred_dir gt_dir\n")
+        print("Usage: python3 page_xml_evaluator.py -o out_dir -i " + \
+                "image_dir pred_dir gt_dir\n")
         print("pred_dir - the directory containing the XML files to evaluate.")
-        print("gt_dir - the directory containing the ground truth XML files.\n")
+        print("gt_dir - the directory containing the ground truth XML " + \
+                "files.\n")
         print("Optional flags:\n")
-        print("-o out_dir - output evaluation results and document images with ground " + \
-                "truth and prediction overlay to the desired output directory (out_dir).")
-        print("-i image_dir - include document images with ground truth and prediction overlay " + \
-                "in output. The -o flag must also be set. image_dir is the directory containing " + \
-                "the document images.")
+        print("-o out_dir - output evaluation results and document images " + \
+                "with ground truth and prediction overlay to the desired " + \
+                "output directory (out_dir).")
+        print("-i image_dir - include document images with ground truth " + \
+                "and prediction overlay in output. The -o flag must also " + \
+                "be set. image_dir is the directory containing the " + \
+                "document images.")
 
         sys.exit()
 
@@ -286,8 +298,8 @@ def main(argv):
 
             # Skip evaluation if ground truth files cannot be parsed or opened.
             try:
-                gt_page = et.parse(gt_dir + gt_filename).getroot().find(PAGE_TAG,
-                        NAMESPACE_GT)
+                gt_page = et.parse(gt_dir + \
+                        gt_filename).getroot().find(PAGE_TAG, NAMESPACE_GT)
             except IOError:
                 print("Could not open " + gt_dir + gt_filename + \
                         ". Skipping evaluation.\n")
@@ -337,8 +349,8 @@ def main(argv):
                 results_file.write(pred_file + "," + str(result[0]) + "," + 
                         str(result[1]) + "," + str(result[2]) + "\n")
 
-            print("DA: " + str(result[0]) + ", RA: " + str(result[1]) + ", F: " + \
-                    str(result[2]) + "\n")
+            print("DA: " + str(result[0]) + ", RA: " + str(result[1]) +  
+                    ", F: " + str(result[2]) + "\n")
     except FileNotFoundError:
         print("Directory " + pred_dir + " not found. Aborting evaluation.")
         sys.exit()
