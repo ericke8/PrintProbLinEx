@@ -23,11 +23,12 @@ import getopt
 import xml.etree.ElementTree as et
 import numpy as np
 
-MATCHSCORE_THRESHOLD = 0.8
+MATCHSCORE_THRESHOLD = 0.95
 
 OUTPUT_DIR_OPT = "-o"
 IMAGE_DIR_OPT = "-i"
-OPTIONS = "o:i:"
+MATCH_THRESH_OPT = "-t"
+OPTIONS = "o:i:t:"
 PRED_DIR_OPT = 0
 GT_DIR_OPT = 1
 ARGS = 2
@@ -114,8 +115,9 @@ greater than the specified threshold.
 pred_lines: a list of coordinates for predicted lines.
 gt_lines: a list of coordinates for ground truth lines.
 shape: shape of the document image.
+threshold: the threshold for one-to-one match acceptance.
 '''
-def get_one_to_one_matches(pred_lines, gt_lines, shape):
+def get_one_to_one_matches(pred_lines, gt_lines, shape, threshold):
     matches = 0
 
     gt_lines = gt_lines.copy()
@@ -130,7 +132,7 @@ def get_one_to_one_matches(pred_lines, gt_lines, shape):
 
             matchscore = get_intersection_over_union(pred_img, gt_img)
 
-            if matchscore > MATCHSCORE_THRESHOLD:
+            if matchscore >= threshold:
                 matches += 1
                 gt_lines.remove(gt_line)
                 break
@@ -144,11 +146,12 @@ document.
 pred_lines: a list of coordinates for predicted lines.
 gt_lines: a list of coordinates for ground truth lines.
 image: the document image.
+threshold: the threshold for one-to-one match acceptance.
 '''
-def evaluate(pred_lines, gt_lines, image):
+def evaluate(pred_lines, gt_lines, image, threshold):
     pred_size = len(pred_lines)
     gt_size = len(gt_lines)
-    matches = get_one_to_one_matches(pred_lines, gt_lines, image)
+    matches = get_one_to_one_matches(pred_lines, gt_lines, image, threshold)
     detection_accuracy = 1 if not gt_size else (matches / gt_size)
     recognition_accuracy = 1 if not pred_size else (matches / pred_size)
     f_measure = 0
@@ -200,6 +203,8 @@ def main(argv):
     gt_dir = ""
     out_dir = ""
 
+    matchscore_threshold = MATCHSCORE_THRESHOLD
+
     # Parse command line args
     try:
         opts, args = getopt.getopt(argv, OPTIONS)
@@ -212,6 +217,14 @@ def main(argv):
                 out_dir = arg + "/" if arg[-1] != "/" else arg
             elif opt == IMAGE_DIR_OPT:
                 image_dir = arg + "/" if arg[-1] != "/" else arg
+            elif opt == MATCH_THRESH_OPT:
+                arg = float(arg)
+
+                if arg >= 0 and arg <= 1:
+                    matchscore_threshold = arg
+                else:
+                    raise getop.GetoptError("Matchscore threshold must be a " + \
+                            "real value between 0 and 1 (inclusive)")
             else:
                 raise getopt.GetoptError("Unrecognized option passed.")
 
@@ -226,7 +239,7 @@ def main(argv):
                 else args[GT_DIR_OPT]
     except getopt.GetoptError:
         print("Usage: python3 page_xml_evaluator.py -o out_dir -i " + \
-                "image_dir pred_dir gt_dir\n")
+                "image_dir -t n=0.95 pred_dir gt_dir\n")
         print("pred_dir - the directory containing the XML files to evaluate.")
         print("gt_dir - the directory containing the ground truth XML " + \
                 "files.\n")
@@ -238,6 +251,8 @@ def main(argv):
                 "and prediction overlay in output. The -o flag must also " + \
                 "be set. image_dir is the directory containing the " + \
                 "document images.")
+        print("-t n - Sets the matchscore threshold. Must be a real value " + \
+                "between 0 and 1 (inclusive).")
 
         sys.exit()
 
@@ -345,7 +360,7 @@ def main(argv):
                             "output. \n")
 
             result = evaluate(pred_lines, gt_lines, 
-                    (gt_image_height, gt_image_width))
+                    (gt_image_height, gt_image_width), matchscore_threshold)
             detection_accuracy += result[0]
             recognition_accuracy += result[1]
             f_measure += result[2]
