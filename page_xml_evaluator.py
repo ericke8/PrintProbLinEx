@@ -122,7 +122,7 @@ def get_one_to_one_matches(pred_lines, gt_lines, shape, threshold):
     matches = 0
 
     gt_lines = gt_lines.copy()
-    
+
     for pred_line in pred_lines:
         pred_img = cv2.fillConvexPoly(np.zeros(shape, np.uint8), 
                                   np.array(pred_line, dtype=np.int32), 1)
@@ -302,7 +302,7 @@ def main(argv):
                             " could not be read. Skipping image output.\n")
 
             pred_page = None
-            
+
             # Skip evaluation if prediction file cannot be opened or parsed.
             try:
                 pred_page = et.parse(pred_dir + pred_file).getroot() \
@@ -352,7 +352,7 @@ def main(argv):
 
             pred_lines = get_line_coords(pred_page, NAMESPACE_PRED)
             gt_lines = get_line_coords(gt_page, NAMESPACE_GT)
-            
+
             # Write output image
             if out_dir and image_output and image.size:
                 try:
