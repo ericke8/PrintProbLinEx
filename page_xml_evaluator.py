@@ -35,7 +35,8 @@ ARGS = 2
 
 DATA_EXTENSION = ".xml"
 IMAGE_EXTENSION = ".tif"
-RESULTS_FILE = "results.csv"
+RESULTS_FILE = "results"
+RESULTS_FILE_EXT = ".csv"
 
 PAGE_TAG = "ns0:Page"
 TEXTREGION_TAG = "ns0:TextRegion"
@@ -257,15 +258,17 @@ def main(argv):
         sys.exit()
 
     results_file = None
+    results_file_name = RESULTS_FILE + "_" + \
+            str(matchscore_threshold).replace("0.", "") + RESULTS_FILE_EXT
     results_output = out_dir != ""
 
     if out_dir:
         try:
-            results_file = open(out_dir + RESULTS_FILE, 'w+')
+            results_file = open(out_dir + results_file_name, 'w+')
             results_file.write("File,Detection Accuracy,Recognition " + \
                     "Accuracy,F-measure\n")
         except FileNotFoundError:
-            print("Could not open " + out_dir + RESULTS_FILE + " for " + \
+            print("Could not open " + out_dir + results_file_name + " for " +
                     "writing. Check that the specified output directory " + \
                     "exists.\n")
             results_output = False
