@@ -93,6 +93,8 @@ def main(argv):
 
         for image_file in file_names:
             image = Image.open(image_dir + image_file)
+            output_file = out_dir + \
+                        image_file.replace(IMAGE_EXTENSION, FILE_EXTENSION)
             width, height = image.size
 
             root = et.Element(ROOT_TAG)
@@ -134,8 +136,12 @@ def main(argv):
                 et.SubElement(line, COORDS_TAG, points=pointsAttr)
 
             tree = et.ElementTree(root)
-            tree.write(out_dir + \
-                    image_file.replace(IMAGE_EXTENSION, FILE_EXTENSION))
+
+            try:
+                tree.write(output_file)
+            except FileNotFoundError:
+                print("Could not open " + output_file + " for writing. " + \
+                        "Line segmentation results not saved.")
 
     if get_time:
         results_file.close()
