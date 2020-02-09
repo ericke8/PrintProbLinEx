@@ -124,10 +124,11 @@ def get_one_to_one_matches(pred_lines, gt_lines, shape, threshold):
     gt_lines = gt_lines.copy()
     
     for pred_line in pred_lines:
+        pred_img = cv2.fillConvexPoly(np.zeros(shape, np.uint8), 
+                                  np.array(pred_line, dtype=np.int32), 1)
+
         for gt_line in gt_lines:
             # Draw filled bounding boxes
-            pred_img = cv2.fillConvexPoly(np.zeros(shape, np.uint8), 
-                                          np.array(pred_line, dtype=np.int32), 1)
             gt_img = cv2.fillConvexPoly(np.zeros(shape, np.uint8), 
                                         np.array(gt_line, dtype=np.int32), 1)
 
