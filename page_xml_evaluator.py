@@ -117,6 +117,8 @@ shape: shape of the document image.
 '''
 def get_one_to_one_matches(pred_lines, gt_lines, shape):
     matches = 0
+
+    gt_lines = gt_lines.copy()
     
     for pred_line in pred_lines:
         for gt_line in gt_lines:
@@ -130,6 +132,8 @@ def get_one_to_one_matches(pred_lines, gt_lines, shape):
 
             if matchscore > MATCHSCORE_THRESHOLD:
                 matches += 1
+                gt_lines.remove(gt_line)
+                break
 
     return matches
 
@@ -142,16 +146,17 @@ gt_lines: a list of coordinates for ground truth lines.
 image: the document image.
 '''
 def evaluate(pred_lines, gt_lines, image):
+    pred_size = len(pred_lines)
+    gt_size = len(gt_lines)
     matches = get_one_to_one_matches(pred_lines, gt_lines, image)
-    detection_accuracy = 1 if not len(gt_lines) else (matches / len(gt_lines))
-    recognition_accuracy = 1 if not len(pred_lines) \
-            else (matches / len(pred_lines))
+    detection_accuracy = 1 if not gt_size else (matches / gt_size)
+    recognition_accuracy = 1 if not pred_size else (matches / pred_size)
     f_measure = 0
     
-    if not len(pred_lines) and not len(gt_lines):
+    if not pred_size and not gt_size:
         f_measure = 1
     else:
-        f_measure = 2 * matches / (len(pred_lines) + len(gt_lines))
+        f_measure = 2 * matches / (pred_size + gt_size)
     
     return (detection_accuracy, recognition_accuracy, f_measure)
 
@@ -266,16 +271,16 @@ def main(argv):
         for pred_file in file_names:
             image_filename = pred_file.replace(DATA_EXTENSION, IMAGE_EXTENSION)
             gt_filename = pred_file.replace(IMAGE_EXTENSION, DATA_EXTENSION)
-            image_output = True
+            image_output = False
 
             if out_dir and image_dir:
                 try:
                     image = cv2.imread(image_dir + image_filename)
                     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                    image_output = True
                 except cv2.error:
                     print("Image file " + image_dir + image_filename + 
                             " could not be read. Skipping image output.\n")
-                    image_output = False
 
             pred_page = None
             
@@ -328,14 +333,8 @@ def main(argv):
 
             pred_lines = get_line_coords(pred_page, NAMESPACE_PRED)
             gt_lines = get_line_coords(gt_page, NAMESPACE_GT)
-
-            result = evaluate(pred_lines, gt_lines, 
-                    (gt_image_height, gt_image_width))
-            detection_accuracy += result[0]
-            recognition_accuracy += result[1]
-            f_measure += result[2]
-            evaluated += 1
-
+            
+            # Write output image
             if out_dir and image_output and image.size:
                 try:
                     cv2.imwrite(out_dir + image_filename, output_image(image, 
@@ -344,6 +343,13 @@ def main(argv):
                     print("Image file " + out_dir + image_filename + \
                             " could not be wrriten to. Skipping image " + \
                             "output. \n")
+
+            result = evaluate(pred_lines, gt_lines, 
+                    (gt_image_height, gt_image_width))
+            detection_accuracy += result[0]
+            recognition_accuracy += result[1]
+            f_measure += result[2]
+            evaluated += 1
 
             if results_output:
                 results_file.write(pred_file + "," + str(result[0]) + "," + 
