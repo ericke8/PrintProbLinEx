@@ -13,6 +13,7 @@ NOTE: NAMESPACE_PRED and NAMESPACE_GT may need to be modified if XML data for
 predictions and/or ground truth use different schemas.
 
 Author: Jason Vega
+Email: jasonvega14@yahoo.com
 '''
 
 import cv2

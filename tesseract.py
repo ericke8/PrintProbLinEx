@@ -2,6 +2,7 @@
 Line extraction tool using Tesseract 4.0.
 
 Author: Jason Vega
+Email: jvega@ucsd.edu
 '''
 
 from tesserocr import PyTessBaseAPI
