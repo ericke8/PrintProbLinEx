@@ -29,7 +29,10 @@ MATCHSCORE_THRESHOLD = 0.95
 OUTPUT_DIR_OPT = "-o"
 IMAGE_DIR_OPT = "-i"
 MATCH_THRESH_OPT = "-t"
-OPTIONS = "o:i:t:"
+LOWER_THRESH_OPT = "-l"
+UPPER_THRESH_OPT = "-u"
+THRESH_STEP_OPT = "-s"
+OPTIONS = "o:i:t:l:u:s:"
 PRED_DIR_OPT = 0
 GT_DIR_OPT = 1
 ARGS = 2
@@ -52,8 +55,10 @@ COORD_DELIM = ","
 LOWER_BINARY_THRESH = 127
 UPPER_BINARY_THRESH = 255
 
-PRED_LINE_COLOR = (255, 0, 0)
+THRESHOLD_STEP = 0.01
+
 GT_LINE_COLOR = (0, 255, 0)
+PRED_LINE_COLOR = (255, 0, 0)
 LINES_CLOSED = True
 FIGURE_SIZE = 35
 
@@ -207,6 +212,13 @@ def main(argv):
     out_dir = ""
 
     matchscore_threshold = MATCHSCORE_THRESHOLD
+    specific_threshold_set = False
+    range_threshold = False
+    keep_iterating = True
+    lower_threshold = 0
+    upper_threshold = 1
+    threshold_step = THRESHOLD_STEP
+    first_threshold = True
 
     # Parse command line args
     try:
@@ -220,33 +232,58 @@ def main(argv):
                 out_dir = arg + "/" if arg[-1] != "/" else arg
             elif opt == IMAGE_DIR_OPT:
                 image_dir = arg + "/" if arg[-1] != "/" else arg
-            elif opt == MATCH_THRESH_OPT:
+            elif opt == MATCH_THRESH_OPT or opt == LOWER_THRESH_OPT or \
+                    opt == UPPER_THRESH_OPT:
                 arg = float(arg)
 
                 if arg >= 0 and arg <= 1:
-                    matchscore_threshold = arg
+                    if opt == MATCH_THRESH_OPT:
+                        matchscore_threshold = arg
+                        specific_threshold_set = True
+                    elif opt == LOWER_THRESH_OPT:
+                        lower_threshold = arg
+                        range_threshold = True
+                    elif opt == UPPER_THRESH_OPT:
+                        upper_threshold = arg
+                        range_threshold = True
                 else:
-                    raise getop.GetoptError("Matchscore threshold must be a " + \
-                            "real value between 0 and 1 (inclusive)")
+                    raise getopt.GetoptError("Matchscore threshold must be a " + \
+                            "real value between 0 and 1 (inclusive).")
+            elif opt == THRESH_STEP_OPT:
+                arg = float(arg)
+
+                if arg:
+                    threshold_step = arg
+                else:
+                    raise getopt.GetoptError("Threshold step should be non-zero.")
             else:
                 raise getopt.GetoptError("Unrecognized option passed.")
+
+        if specific_threshold_set and range_threshold:
+            raise getopt.GetoptError("Cannot simultaneously set threshold " + \
+                    "value while specifying a threshold range.")
+
+        if lower_threshold > upper_threshold:
+            raise getopt.GetoptError("The lower threshold should be less " + \
+                    "than or equal to the upper threshold.")
 
 
         if image_dir and not out_dir:
             raise getopt.GetoptError("-o flag needs to be specfied when -i " + \
-                    "flag is used")
+                    "flag is used.")
 
         pred_dir = args[PRED_DIR_OPT] + "/" if args[PRED_DIR_OPT][-1] != "/" \
                 else args[PRED_DIR_OPT]
         gt_dir = args[GT_DIR_OPT] + "/" if args[GT_DIR_OPT][-1] != "/" \
                 else args[GT_DIR_OPT]
-    except getopt.GetoptError:
-        print("Usage: python3 page_xml_evaluator.py -o out_dir -i " + \
-                "image_dir -t n=0.95 pred_dir gt_dir\n")
+    except getopt.GetoptError as err:
+        print("ERROR: " + str(err) + "\n")
+        print("Usage: python page_xml_evaluator.py [OPTION]... pred_dir " + \
+                "gt_dir\n")
         print("pred_dir - the directory containing the XML files to evaluate.")
         print("gt_dir - the directory containing the ground truth XML " + \
                 "files.\n")
-        print("Optional flags:\n")
+        print("Optional flags:")
         print("-o out_dir - output evaluation results and document images " + \
                 "with ground truth and prediction overlay to the desired " + \
                 "output directory (out_dir).")
@@ -254,46 +291,68 @@ def main(argv):
                 "and prediction overlay in output. The -o flag must also " + \
                 "be set. image_dir is the directory containing the " + \
                 "document images.")
-        print("-t n - Sets the matchscore threshold. Must be a real value " + \
-                "between 0 and 1 (inclusive).")
+        print("-t n - sets the matchscore threshold. Must be a real value " + \
+                "between 0 and 1 (inclusive). Cannot be set alongside -u or" + \
+                "-l.")
+        print("-l n - sets the lower threshold to be n. A range of " + \
+                "thresholds will then be used for evaluation. Must be a " + \
+                "real between 0 and 1 (inclusive). Cannot be set alongside -l.")
+        print("-u n - sets the upper threshold to be n. A range of " + \
+                "will then be used for evaluation. Must be a real between" + \
+                "0 and 1 (inclusive). Cannot be set alongside -u.")
+        print("-s n - sets the step size for threshold range evaluation." + \
+                "Must be a non-zero real number. Negative step sizes are " + \
+                "allowed, and will cause the threshold range to be iterated" + \
+                "through in reverse.")
 
         sys.exit()
 
-    results_file = None
-    results_file_name = RESULTS_FILE + "_" + \
-            str(matchscore_threshold).replace("0.", "") + RESULTS_FILE_EXT
-    results_output = out_dir != ""
-
-    if out_dir:
-        try:
-            results_file = open(out_dir + results_file_name, 'w+')
-            results_file.write("File,Detection Accuracy,Recognition " + \
-                    "Accuracy,F-measure\n")
-        except FileNotFoundError:
-            print("Could not open " + out_dir + results_file_name + " for " +
-                    "writing. Check that the specified output directory " + \
-                    "exists.\n")
-            results_output = False
-
-    skipped_evals = []
-    detection_accuracy = 0
-    recognition_accuracy = 0
-    f_measure = 0
-    evaluated = 0
-    image = None
+    if range_threshold:
+        matchscore_threshold = lower_threshold if threshold_step > 0 else upper_threshold
 
     try: 
         file_names = os.listdir(pred_dir)
 
         if file_names:
             file_names.sort()
+    except FileNotFoundError:
+        print("Directory " + pred_dir + " not found. Aborting evaluation.")
+        sys.exit()
+
+    while keep_iterating and matchscore_threshold <= upper_threshold \
+            and matchscore_threshold >= lower_threshold:
+        results_file = None
+        results_file_name = RESULTS_FILE + "_" + \
+                str(matchscore_threshold).replace("0.", "") + RESULTS_FILE_EXT
+        results_output = out_dir != ""
+
+        if out_dir:
+            try:
+                results_file = open(out_dir + results_file_name, 'w+')
+                results_file.write("File,Detection Accuracy,Recognition " + \
+                        "Accuracy,F-measure\n")
+            except FileNotFoundError:
+                print("Could not open " + out_dir + results_file_name + " for " +
+                        "writing. Check that the specified output directory " + \
+                        "exists.\n")
+                results_output = False
+
+        skipped_evals = []
+        detection_accuracy = 0
+        recognition_accuracy = 0
+        f_measure = 0
+        evaluated = 0
+        image = None
+
+        print("--- Beginning evaluation on " + pred_dir + " with threshold " + \
+                str(matchscore_threshold) + " ---\n")
 
         for pred_file in file_names:
             image_filename = pred_file.replace(DATA_EXTENSION, IMAGE_EXTENSION)
             gt_filename = pred_file.replace(IMAGE_EXTENSION, DATA_EXTENSION)
             image_output = False
 
-            if out_dir and image_dir:
+            if first_threshold and out_dir and image_dir:
                 try:
                     image = cv2.imread(image_dir + image_filename)
                     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -355,7 +414,7 @@ def main(argv):
             gt_lines = get_line_coords(gt_page, NAMESPACE_GT)
 
             # Write output image
-            if out_dir and image_output and image.size:
+            if first_threshold and out_dir and image_output and image.size:
                 try:
                     cv2.imwrite(out_dir + image_filename, output_image(image, 
                         pred_lines, gt_lines))
@@ -377,30 +436,37 @@ def main(argv):
 
             print("DA: " + str(result[0]) + ", RA: " + str(result[1]) +  
                     ", F: " + str(result[2]) + "\n")
-    except FileNotFoundError:
-        print("Directory " + pred_dir + " not found. Aborting evaluation.")
-        sys.exit()
 
-    if evaluated:
-        detection_accuracy /= evaluated
-        recognition_accuracy /= evaluated
-        f_measure /= evaluated
-    else:
-        print("\nNo files evaluated. Check that the ground truth directory " + \
-            "exists and contains valid files.")
-        sys.exit()
+        if evaluated:
+            detection_accuracy /= evaluated
+            recognition_accuracy /= evaluated
+            f_measure /= evaluated
 
-    print("\n--- Global Results ---\nDA: " + str(detection_accuracy) + 
-            ", RA: " + str(recognition_accuracy) + ", F: " + str(f_measure))
+            print("--- Global Results ---")
+            print("DA: " + str(detection_accuracy) + 
+                    ", RA: " + str(recognition_accuracy) + ", F: " + str(f_measure))
 
-    if len(skipped_evals) > 0:
-        print("\nSkipped evaluations (" + str(len(skipped_evals)) + "):\n")
+            if len(skipped_evals) > 0:
+                print("\nSkipped evaluations (" + str(len(skipped_evals)) + "):")
 
-    for file_name in skipped_evals:
-        print(file_name)
-    
-    if results_output:
-        results_file.close()
+                for file_name in skipped_evals:
+                    print(file_name)
+        
+                print()
+        else:
+            print("No files evaluated. Check that the ground truth directory " + \
+                "exists and contains valid files.")
+
+        if results_output:
+            results_file.close()
+
+        if first_threshold:
+            first_threshold = False
+
+        if not range_threshold:
+            keep_iterating = False
+        else:
+            matchscore_threshold += threshold_step
 
 
 if __name__ == "__main__":
