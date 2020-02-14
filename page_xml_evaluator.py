@@ -31,7 +31,7 @@ IMAGE_DIR_OPT = "-i"
 MATCH_THRESH_OPT = "-t"
 LOWER_THRESH_OPT = "-l"
 UPPER_THRESH_OPT = "-u"
-THRESH_STEP_OPT = "-s"
+THRESH_STEPS_OPT = "-s"
 OPTIONS = "o:i:t:l:u:s:"
 PRED_DIR_OPT = 0
 GT_DIR_OPT = 1
@@ -40,6 +40,7 @@ ARGS = 2
 DATA_EXTENSION = ".xml"
 IMAGE_EXTENSION = ".tif"
 RESULTS_FILE = "results"
+RESULTS_RANGE_FILE = "results_range"
 RESULTS_FILE_EXT = ".csv"
 
 PAGE_TAG = "ns0:Page"
@@ -55,12 +56,16 @@ COORD_DELIM = ","
 LOWER_BINARY_THRESH = 127
 UPPER_BINARY_THRESH = 255
 
-THRESHOLD_STEP = 0.01
+#THRESHOLD_STEPS = 0.01
+THRESHOLD_STEPS = 100
 
 GT_LINE_COLOR = (0, 255, 0)
 PRED_LINE_COLOR = (255, 0, 0)
 LINES_CLOSED = True
-FIGURE_SIZE = 35
+
+DETECTION_RESULT_IDX = 0
+RECOGNITION_RESULT_IDX = 1
+F_MEASURE_RESULT_IDX = 2
 
 NAMESPACE_PRED = {
     "ns0": "http://schema.primaresearch.org/PAGE/gts/pagecontent/2019-07-15",
@@ -201,26 +206,13 @@ def output_image(image, pred_lines, gt_lines):
     return image
 
 '''
-Process command line arguments and run evaluations.
+Parse command line arguments. Returns a dictionary of the parsed arguments.
 
 argv: command line arguments.
 '''
-def main(argv):
-    image_dir = ""
-    pred_dir = ""
-    gt_dir = ""
-    out_dir = ""
+def parse_args(argv):
+    parsed_args = {}
 
-    matchscore_threshold = MATCHSCORE_THRESHOLD
-    specific_threshold_set = False
-    range_threshold = False
-    keep_iterating = True
-    lower_threshold = 0
-    upper_threshold = 1
-    threshold_step = THRESHOLD_STEP
-    first_threshold = True
-
-    # Parse command line args
     try:
         opts, args = getopt.getopt(argv, OPTIONS)
 
@@ -229,53 +221,56 @@ def main(argv):
 
         for opt, arg in opts:
             if opt == OUTPUT_DIR_OPT:
-                out_dir = arg + "/" if arg[-1] != "/" else arg
+                parsed_args[OUTPUT_DIR_OPT] = arg + "/" if arg[-1] != "/" else \
+                        arg
             elif opt == IMAGE_DIR_OPT:
-                image_dir = arg + "/" if arg[-1] != "/" else arg
+                parsed_args[IMAGE_DIR_OPT] = arg + "/" if arg[-1] != "/" else \
+                        arg
             elif opt == MATCH_THRESH_OPT or opt == LOWER_THRESH_OPT or \
                     opt == UPPER_THRESH_OPT:
                 arg = float(arg)
 
                 if arg >= 0 and arg <= 1:
                     if opt == MATCH_THRESH_OPT:
-                        matchscore_threshold = arg
-                        specific_threshold_set = True
+                        parsed_args[MATCH_THRESH_OPT] = arg
                     elif opt == LOWER_THRESH_OPT:
-                        lower_threshold = arg
-                        range_threshold = True
+                        parsed_args[LOWER_THRESH_OPT] = arg
                     elif opt == UPPER_THRESH_OPT:
-                        upper_threshold = arg
-                        range_threshold = True
+                        parsed_args[UPPER_THRESH_OPT] = arg
                 else:
-                    raise getopt.GetoptError("Matchscore threshold must be a " + \
-                            "real value between 0 and 1 (inclusive).")
-            elif opt == THRESH_STEP_OPT:
-                arg = float(arg)
+                    raise getopt.GetoptError("Matchscore threshold must be " + \
+                            "a real value between 0 and 1 (inclusive).")
+            elif opt == THRESH_STEPS_OPT:
+                arg = int(arg)
 
-                if arg:
-                    threshold_step = arg
+                if arg >= 0:
+                    parsed_args[THRESH_STEPS_OPT] = arg
                 else:
-                    raise getopt.GetoptError("Threshold step should be non-zero.")
-            else:
-                raise getopt.GetoptError("Unrecognized option passed.")
+                    raise getopt.GetoptError("The number of steps should " + \
+                            "be non-negative.")
 
-        if specific_threshold_set and range_threshold:
+        if parsed_args.get(MATCH_THRESH_OPT) and \
+                (parsed_args.get(LOWER_THRESH_OPT) or \
+                parsed_args.get(UPPER_THRESH_OPT)):
             raise getopt.GetoptError("Cannot simultaneously set threshold " + \
                     "value while specifying a threshold range.")
 
-        if lower_threshold > upper_threshold:
+        if parsed_args.get(LOWER_THRESH_OPT) and \
+                parsed_args.get(UPPER_THRESH_OPT) and \
+                parsed_args.get(LOWER_THRESH_OPT) > \
+                parsed_args.get(UPPER_THRESH_OPT):
             raise getopt.GetoptError("The lower threshold should be less " + \
                     "than or equal to the upper threshold.")
 
 
-        if image_dir and not out_dir:
+        if parsed_args.get(IMAGE_DIR_OPT) and not parsed_args.get(OUTPUT_DIR_OPT):
             raise getopt.GetoptError("-o flag needs to be specfied when -i " + \
                     "flag is used.")
 
-        pred_dir = args[PRED_DIR_OPT] + "/" if args[PRED_DIR_OPT][-1] != "/" \
-                else args[PRED_DIR_OPT]
-        gt_dir = args[GT_DIR_OPT] + "/" if args[GT_DIR_OPT][-1] != "/" \
-                else args[GT_DIR_OPT]
+        parsed_args[PRED_DIR_OPT] = args[PRED_DIR_OPT] + "/" if \
+                args[PRED_DIR_OPT][-1] != "/" else args[PRED_DIR_OPT]
+        parsed_args[GT_DIR_OPT] = args[GT_DIR_OPT] + "/" if \
+                args[GT_DIR_OPT][-1] != "/" else args[GT_DIR_OPT]
     except getopt.GetoptError as err:
         print("ERROR: " + str(err) + "\n")
         print("Usage: python page_xml_evaluator.py [OPTION]... pred_dir " + \
@@ -292,23 +287,50 @@ def main(argv):
                 "be set. image_dir is the directory containing the " + \
                 "document images.")
         print("-t n - sets the matchscore threshold. Must be a real value " + \
-                "between 0 and 1 (inclusive). Cannot be set alongside -u or" + \
-                "-l.")
+                "between 0 and 1 (inclusive). Cannot be set alongside -u " + \
+                "or -l. Default value is " + str(MATCHSCORE_THRESHOLD) + ".")
         print("-l n - sets the lower threshold to be n. A range of " + \
                 "thresholds will then be used for evaluation. Must be a " + \
-                "real between 0 and 1 (inclusive). Cannot be set alongside -l.")
+                "real between 0 and 1 (inclusive). Cannot be set alongside " + \
+                "-t. Default value is 0 if only -u is set.")
         print("-u n - sets the upper threshold to be n. A range of " + \
-                "will then be used for evaluation. Must be a real between" + \
-                "0 and 1 (inclusive). Cannot be set alongside -u.")
-        print("-s n - sets the step size for threshold range evaluation." + \
-                "Must be a non-zero real number. Negative step sizes are " + \
-                "allowed, and will cause the threshold range to be iterated" + \
-                "through in reverse.")
+                "will then be used for evaluation. Must be a real between " + \
+                "0 and 1 (inclusive). Cannot be set alongside -t. " + \
+                "Default value is 1 if only -l is set.")
+        print("-s n - the number of steps when evaluating over a range of " + \
+                "threshold values. Default value is " + str(THRESHOLD_STEPS) + \
+                ".")
 
         sys.exit()
 
-    if range_threshold:
-        matchscore_threshold = lower_threshold if threshold_step > 0 else upper_threshold
+    return parsed_args
+
+
+'''
+Run evaluation tool with the given command line arguments.
+
+argv: command line arguments.
+'''
+def main(argv):
+    args = parse_args(argv)
+
+    image_dir = args.get(IMAGE_DIR_OPT, "")
+    pred_dir = args.get(PRED_DIR_OPT, "")
+    gt_dir = args.get(GT_DIR_OPT, "")
+    out_dir = args.get(OUTPUT_DIR_OPT, "")
+
+    iterate_thresh = args.get(LOWER_THRESH_OPT) or args.get(UPPER_THRESH_OPT)
+    lower_threshold = args.get(LOWER_THRESH_OPT, 0)
+    upper_threshold = args.get(UPPER_THRESH_OPT, 1)
+    matchscore_threshold = (lower_threshold if iterate_thresh else \
+            args.get(MATCH_THRESH_OPT, MATCHSCORE_THRESHOLD))
+    threshold_steps = args.get(THRESH_STEPS_OPT, THRESHOLD_STEPS)
+
+    images_outputted = False
+
+    results_range_output = out_dir != "" and iterate_thresh
+    results_range_file = None
+    results_range_file_name = RESULTS_RANGE_FILE + RESULTS_FILE_EXT
 
     try: 
         file_names = os.listdir(pred_dir)
@@ -319,12 +341,33 @@ def main(argv):
         print("Directory " + pred_dir + " not found. Aborting evaluation.")
         sys.exit()
 
-    while keep_iterating and matchscore_threshold <= upper_threshold \
-            and matchscore_threshold >= lower_threshold:
+    if results_range_output:
+        try:
+            results_range_file = open(out_dir + results_range_file_name, 'w+')
+            results_range_file.write("Threshold,Average Detection " + \
+                    "Accuracy, Average Recognition Accuracy, Average " + \
+                    "F-measure\n")
+        except FileNotFoundError:
+            print("Could not open " + out_dir + results_range_file_name + 
+                    " for writing. Check that the specified output " + \
+                    "directory exists.\n")
+            results_range_output = False
+
+    #Iterate through all matchscore thresholds if range is specified
+    for matchscore_threshold in np.linspace(matchscore_threshold, \
+            upper_threshold, threshold_steps):
         results_file = None
         results_file_name = RESULTS_FILE + "_" + \
                 str(matchscore_threshold).replace("0.", "") + RESULTS_FILE_EXT
         results_output = out_dir != ""
+        
+        detection_accuracy = 0
+        recognition_accuracy = 0
+        f_measure = 0
+        evaluated = 0
+
+        skipped_evals = []
+        image_outputted = False
 
         if out_dir:
             try:
@@ -332,17 +375,10 @@ def main(argv):
                 results_file.write("File,Detection Accuracy,Recognition " + \
                         "Accuracy,F-measure\n")
             except FileNotFoundError:
-                print("Could not open " + out_dir + results_file_name + " for " +
-                        "writing. Check that the specified output directory " + \
-                        "exists.\n")
+                print("Could not open " + out_dir + results_file_name + \
+                        "for writing. Check that the specified output " + \
+                        "directory exists.\n")
                 results_output = False
-
-        skipped_evals = []
-        detection_accuracy = 0
-        recognition_accuracy = 0
-        f_measure = 0
-        evaluated = 0
-        image = None
 
         print("--- Beginning evaluation on " + pred_dir + " with threshold " + \
                 str(matchscore_threshold) + " ---\n")
@@ -350,9 +386,12 @@ def main(argv):
         for pred_file in file_names:
             image_filename = pred_file.replace(DATA_EXTENSION, IMAGE_EXTENSION)
             gt_filename = pred_file.replace(IMAGE_EXTENSION, DATA_EXTENSION)
-            image_output = False
 
-            if first_threshold and out_dir and image_dir:
+            image = None
+            pred_page = None
+            gt_page = None
+
+            if not images_outputted and out_dir and image_dir:
                 try:
                     image = cv2.imread(image_dir + image_filename)
                     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -360,8 +399,6 @@ def main(argv):
                 except cv2.error:
                     print("Image file " + image_dir + image_filename + 
                             " could not be read. Skipping image output.\n")
-
-            pred_page = None
 
             # Skip evaluation if prediction file cannot be opened or parsed.
             try:
@@ -377,8 +414,6 @@ def main(argv):
                         ". Skipping evaluation.\n")
                 skipped_evals.append(pred_file)
                 continue
-
-            gt_page = None
 
             # Skip evaluation if ground truth files cannot be parsed or opened.
             try:
@@ -414,7 +449,7 @@ def main(argv):
             gt_lines = get_line_coords(gt_page, NAMESPACE_GT)
 
             # Write output image
-            if first_threshold and out_dir and image_output and image.size:
+            if not images_outputted and out_dir and image_output and image.size:
                 try:
                     cv2.imwrite(out_dir + image_filename, output_image(image, 
                         pred_lines, gt_lines))
@@ -425,17 +460,20 @@ def main(argv):
 
             result = evaluate(pred_lines, gt_lines, 
                     (gt_image_height, gt_image_width), matchscore_threshold)
-            detection_accuracy += result[0]
-            recognition_accuracy += result[1]
-            f_measure += result[2]
+            detection_accuracy += result[DETECTION_RESULT_IDX]
+            recognition_accuracy += result[RECOGNITION_RESULT_IDX]
+            f_measure += result[F_MEASURE_RESULT_IDX]
             evaluated += 1
 
             if results_output:
-                results_file.write(pred_file + "," + str(result[0]) + "," + 
-                        str(result[1]) + "," + str(result[2]) + "\n")
+                results_file.write(pred_file + "," + \
+                        str(result[DETECTION_RESULT_IDX]) + "," + \
+                        str(result[RECOGNITION_RESULT_IDX]) + "," + \
+                        str(result[F_MEASURE_RESULT_IDX]) + "\n")
 
-            print("DA: " + str(result[0]) + ", RA: " + str(result[1]) +  
-                    ", F: " + str(result[2]) + "\n")
+            print("DA: " + str(result[DETECTION_RESULT_IDX]) + ", RA: " + \
+                    str(result[RECOGNITION_RESULT_IDX]) + ", F: " + \
+                    str(result[F_MEASURE_RESULT_IDX]) + "\n")
 
         if evaluated:
             detection_accuracy /= evaluated
@@ -444,30 +482,39 @@ def main(argv):
 
             print("--- Global Results ---")
             print("DA: " + str(detection_accuracy) + 
-                    ", RA: " + str(recognition_accuracy) + ", F: " + str(f_measure))
+                    ", RA: " + str(recognition_accuracy) + ", F: " + \
+                            str(f_measure))
+
+            if results_range_output:
+                results_range_file.write(str(matchscore_threshold) + "," + \
+                        str(detection_accuracy) + "," + \
+                        str(recognition_accuracy) + "," + str(f_measure) + "\n")
 
             if len(skipped_evals) > 0:
-                print("\nSkipped evaluations (" + str(len(skipped_evals)) + "):")
+                print("\nSkipped evaluations (" + str(len(skipped_evals)) + \
+                        "):")
 
                 for file_name in skipped_evals:
                     print(file_name)
         
                 print()
         else:
-            print("No files evaluated. Check that the ground truth directory " + \
-                "exists and contains valid files.")
+            print("No files evaluated. Check that the ground truth " + \
+                    "directory exists and contains valid files.")
 
         if results_output:
             results_file.close()
 
-        if first_threshold:
-            first_threshold = False
+        # Ensure images are only outputted on the first iteration
+        if not images_outputted:
+            images_outputted = True
+    
+        # End iteration if range was not specified
+        if not iterate_thresh:
+            break
 
-        if not range_threshold:
-            keep_iterating = False
-        else:
-            matchscore_threshold += threshold_step
-
+    if results_range_output:
+        results_range_file.close()
 
 if __name__ == "__main__":
     main(sys.argv[1:])
