@@ -319,7 +319,8 @@ def main(argv):
     gt_dir = args.get(GT_DIR_OPT, "")
     out_dir = args.get(OUTPUT_DIR_OPT, "")
 
-    iterate_thresh = args.get(LOWER_THRESH_OPT) or args.get(UPPER_THRESH_OPT)
+    iterate_thresh = args.get(LOWER_THRESH_OPT) != None or \
+            args.get(UPPER_THRESH_OPT) != None
     lower_threshold = args.get(LOWER_THRESH_OPT, 0)
     upper_threshold = args.get(UPPER_THRESH_OPT, 1)
     matchscore_threshold = (lower_threshold if iterate_thresh else \
@@ -390,6 +391,8 @@ def main(argv):
             image = None
             pred_page = None
             gt_page = None
+
+            image_output = False
 
             if not images_outputted and out_dir and image_dir:
                 try:
