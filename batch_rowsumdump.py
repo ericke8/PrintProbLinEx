@@ -12,7 +12,8 @@ if not os.path.exists(outputDir):
 
 for filename in os.listdir(directory):
     if filename.endswith(".tif"):
-        im = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
+        print(filename)
+        im = cv2.imread(os.path.join(os.path.abspath(directory),filename), cv2.IMREAD_GRAYSCALE)
         print(im.shape)
 
         im = 1-im/255
