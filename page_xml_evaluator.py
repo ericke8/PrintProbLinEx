@@ -56,8 +56,7 @@ COORD_DELIM = ","
 LOWER_BINARY_THRESH = 127
 UPPER_BINARY_THRESH = 255
 
-#THRESHOLD_STEPS = 0.01
-THRESHOLD_STEPS = 100
+THRESHOLD_STEPS = 101
 
 GT_LINE_COLOR = (0, 255, 0)
 PRED_LINE_COLOR = (255, 0, 0)
@@ -120,55 +119,103 @@ def get_intersection_over_union(first, second):
     return intersection_score / union_score
 
 '''
-Returns the number of one-to-one matches between the predicted lines and ground 
-truth. A one-to-one match occurs when the matchscore between two lines is 
-greater than the specified threshold.
+Returns a list of the maximum intersection-over-union score for each one-to-one
+assignment. Each predicted line is assigned to a unique ground truth line that 
+gives that maximum score. If there are no more ground truth lines to assign, 
+the reset of the predicted lines will be skipped.
 
 pred_lines: a list of coordinates for predicted lines.
 gt_lines: a list of coordinates for ground truth lines.
 shape: shape of the document image.
+'''
+def get_maximum_iu_scores(pred_lines, gt_lines, shape):
+    '''
+    Finds the maximum IU scores by first iterating over set_1 and pruning set_2
+
+    set_1: the set to iterate over.
+    set_2: the set to prune.
+    '''
+    def find_maximum_iu_scores(set_1, set_2):
+        iu_scores = []
+        unmatched = 0
+
+        set_2 = set_2.copy()
+
+        for line_1 in set_1:
+            if set_2:
+                img_1 = cv2.fillConvexPoly(np.zeros(shape, np.uint8), 
+                                          np.array(line_1, dtype=np.int32), 1)
+                max_iu_score = 0
+                max_iu_score_line = None
+
+                for line_2 in set_2:
+                    img_2 = cv2.fillConvexPoly(np.zeros(shape, np.uint8), 
+                                                np.array(line_2, dtype=np.int32), 
+                                                1)
+
+                    matchscore = get_intersection_over_union(img_1, img_2)
+
+                    # Make assignments if IU score is > 0 first
+                    if matchscore > max_iu_score:
+                        max_iu_score = matchscore
+                        max_iu_score_line = line_2
+
+                if max_iu_score_line:
+                    iu_scores.append(max_iu_score)
+                    set_2.remove(max_iu_score_line)
+                else:
+                    unmatched += 1
+            else:
+                unmatched += 1
+
+        # Assign remaining lines arbitrarily
+        iu_scores += min(unmatched, len(set_2)) * [0]
+
+        return iu_scores
+    
+    # Compare two orders of iteration and prefer the higher sum of IU scores
+    iu_scores_1 = find_maximum_iu_scores(pred_lines, gt_lines)
+    iu_scores_2 = find_maximum_iu_scores(gt_lines, pred_lines)
+
+    if sum(iu_scores_1) > sum(iu_scores_2):
+        return iu_scores_1
+    else:
+        return iu_scores_2
+
+'''
+Returns the number of one-to-one matches between the predicted lines and ground 
+truth. A one-to-one match is defined when the intersection-over-union score 
+between a predicted line and a ground truth line meets the given threshold.
+
+iu_scores: maximum intersection-over-union scores for all predicted lines, 
+    where no two predicted lines are assigned the same ground truth line.
 threshold: the threshold for one-to-one match acceptance.
 '''
-def get_one_to_one_matches(pred_lines, gt_lines, shape, threshold):
+def get_one_to_one_matches(iu_scores, threshold):
     matches = 0
 
-    gt_lines = gt_lines.copy()
-
-    for pred_line in pred_lines:
-        pred_img = cv2.fillConvexPoly(np.zeros(shape, np.uint8), 
-                                  np.array(pred_line, dtype=np.int32), 1)
-
-        for gt_line in gt_lines:
-            # Draw filled bounding boxes
-            gt_img = cv2.fillConvexPoly(np.zeros(shape, np.uint8), 
-                                        np.array(gt_line, dtype=np.int32), 1)
-
-            matchscore = get_intersection_over_union(pred_img, gt_img)
-
-            if matchscore >= threshold:
-                matches += 1
-                gt_lines.remove(gt_line)
-                break
+    for iu_score in iu_scores:
+        if iu_score >= threshold:
+            matches += 1
 
     return matches
 
 '''
-Returns the detection accuracy, recognition accuracy and F-measure for a given 
-document.
+Returns the detection accuracy, recognition accuracy, and F-measure for a 
+given document.
 
-pred_lines: a list of coordinates for predicted lines.
-gt_lines: a list of coordinates for ground truth lines.
-image: the document image.
+pred_size: the number of predicted lines.
+gt_size: the number of ground truth lines.
+iu_scores: maximum intersection-over-union scores for all predicted lines, 
+    where no two predicted lines are assigned the same ground truth line.
 threshold: the threshold for one-to-one match acceptance.
 '''
-def evaluate(pred_lines, gt_lines, image, threshold):
-    pred_size = len(pred_lines)
-    gt_size = len(gt_lines)
-    matches = get_one_to_one_matches(pred_lines, gt_lines, image, threshold)
+def evaluate(pred_size, gt_size, iu_scores, threshold):
+    matches = get_one_to_one_matches(iu_scores, threshold)
     detection_accuracy = 1 if not gt_size else (matches / gt_size)
     recognition_accuracy = 1 if not pred_size else (matches / pred_size)
     f_measure = 0
-    
+
     if not pred_size and not gt_size:
         f_measure = 1
     else:
@@ -305,6 +352,131 @@ def parse_args(argv):
 
     return parsed_args
 
+'''
+Retrieves predicted line coorindates, ground truth coordinates, image shapes, 
+and maximum intersection-over-union scores for each one-to-one match in each 
+file. Also outputs image files if desired by the user.
+
+file_names: a list of the file names in pred_dir.
+pred_dir: the directory containing prediction files.
+gt_dir: the directory containing ground truth files.
+our_dir: the output directory.
+image_dir: the directory containg the original images.
+'''
+def preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir):
+    pred_lines = {}
+    gt_lines = {}
+    iu_scores = {}
+    skipped_evals = []
+    skipped_images = []
+
+    for pred_file in file_names:
+        gt_filename = pred_file.replace(IMAGE_EXTENSION, DATA_EXTENSION)
+        image_filename = pred_file.replace(DATA_EXTENSION, IMAGE_EXTENSION)
+        pred_page = None
+        gt_page = None
+        image = None
+        image_output = False
+
+        print("Processing " + pred_file + "...")
+
+        # Parse prediction file
+        try:
+            pred_page = et.parse(pred_dir + pred_file).getroot() \
+                .find(PAGE_TAG, NAMESPACE_PRED)
+        except IOError:
+            print("Could not open " + pred_dir + pred_file + \
+                    ". File will not be evaluated.\n")
+            skipped_evals.append(pred_file)
+            continue
+        except et.ParseError:
+            print("Could not parse " + pred_dir + pred_file + \
+                    ". File will not be evaluated.\n")
+            skipped_evals.append(pred_file)
+            continue
+
+        # Parse corresponding ground truth file
+        try:
+            gt_page = et.parse(gt_dir + \
+                    gt_filename).getroot().find(PAGE_TAG, NAMESPACE_GT)
+        except IOError:
+            print("Could not open " + gt_dir + gt_filename + \
+                    ". File will not be evaluated.\n")
+            skipped_evals.append(pred_file)
+            continue
+        except et.ParseError:
+            print("Could not parse " + gt_dir + gt_filename + \
+                    ". File will not be evaluated.\n")
+            skipped_evals.append(pred_file)
+            continue
+
+        # Get prediction and ground truth line coordinates
+        pred_lines[pred_file] = get_line_coords(pred_page, NAMESPACE_PRED)
+        gt_lines[pred_file] = get_line_coords(gt_page, NAMESPACE_GT)
+
+        # Retrieve corresponding original image
+        if out_dir and image_dir:
+            try:
+                image = cv2.imread(image_dir + image_filename)
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                image_output = True
+            except cv2.error:
+                print("Image file " + image_dir + image_filename + 
+                        " could not be read. Skipping image output.")
+                skipped_images.append(pred_file)
+
+        gt_image_width = int(gt_page.get(WIDTH_TAG))
+        gt_image_height = int(gt_page.get(HEIGHT_TAG))
+        pred_image_width = int(pred_page.get(WIDTH_TAG))
+        pred_image_height = int(pred_page.get(HEIGHT_TAG))
+
+        # Skip evaluation if image dimensions do not match
+        if gt_image_width != pred_image_width or \
+            gt_image_height != pred_image_height:
+            print("Ground truth and prediction image dimensions do " + \
+                    "not match. File will not be evaluated.\n")
+            skipped_evals.append(pred_file)
+            continue
+
+        shape = (gt_image_height, gt_image_width)
+
+        # Project predicted and ground truth bounding boxes onto original image 
+        # and write this image to disk
+        if out_dir and image_output and image.size:
+            try:
+                cv2.imwrite(out_dir + image_filename, output_image(image, 
+                    pred_lines[pred_file], gt_lines[pred_file]))
+            except cv2.error:
+                print("Image file " + out_dir + image_filename + \
+                        " could not be wrriten to. Skipping image " + \
+                        "output.")
+
+        iu_scores[pred_file] = get_maximum_iu_scores(pred_lines[pred_file], 
+                gt_lines[pred_file], shape)
+
+        print()
+
+    # Print out files that will not be evaluated
+    if len(skipped_evals) > 0:
+        print("Files that will not be evaluated (" + \
+                str(len(skipped_evals)) + "):")
+
+        for file_name in skipped_evals:
+            print(file_name)
+
+        print()
+
+    # Print out files that will have no image output
+    if out_dir and image_dir and len(skipped_images) > 0:
+        print("Files that will not have image output (" + \
+                str(len(skipped_images)) + "):")
+
+        for file_name in skipped_images:
+            print(file_name)
+
+        print()
+    
+    return (pred_lines, gt_lines, iu_scores)
 
 '''
 Run evaluation tool with the given command line arguments.
@@ -327,11 +499,13 @@ def main(argv):
             args.get(MATCH_THRESH_OPT, MATCHSCORE_THRESHOLD))
     threshold_steps = args.get(THRESH_STEPS_OPT, THRESHOLD_STEPS)
 
-    images_outputted = False
-
     results_range_output = out_dir != "" and iterate_thresh
     results_range_file = None
     results_range_file_name = RESULTS_RANGE_FILE + RESULTS_FILE_EXT
+
+    pred_lines = {}
+    gt_lines = {}
+    iu_scores = {}
 
     try: 
         file_names = os.listdir(pred_dir)
@@ -345,14 +519,18 @@ def main(argv):
     if results_range_output:
         try:
             results_range_file = open(out_dir + results_range_file_name, 'w+')
-            results_range_file.write("Threshold,Average Detection " + \
-                    "Accuracy, Average Recognition Accuracy, Average " + \
-                    "F-measure\n")
+            results_range_file.write("Threshold,Detection " + \
+                    "Accuracy,Recognition Accuracy,F-measure\n")
         except FileNotFoundError:
             print("Could not open " + out_dir + results_range_file_name + 
                     " for writing. Check that the specified output " + \
                     "directory exists.\n")
             results_range_output = False
+
+    # Pre-process files for evaluation
+    print("Pre-processing files for evaluation...\n")
+    pred_lines, gt_lines, iu_scores = \
+        preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir)
 
     #Iterate through all matchscore thresholds if range is specified
     for matchscore_threshold in np.linspace(matchscore_threshold, \
@@ -364,17 +542,14 @@ def main(argv):
         
         detection_accuracy = 0
         recognition_accuracy = 0
-        f_measure = 0
         evaluated = 0
-
-        skipped_evals = []
-        image_outputted = False
 
         if out_dir:
             try:
                 results_file = open(out_dir + results_file_name, 'w+')
-                results_file.write("File,Detection Accuracy,Recognition " + \
-                        "Accuracy,F-measure\n")
+                results_file.write("File,Ground Truth Lines,Predicted " + \
+                        "Lines,Detection Accuracy," + \
+                        "Recognition Accuracy,F-measure\n")
             except FileNotFoundError:
                 print("Could not open " + out_dir + results_file_name + \
                         "for writing. Check that the specified output " + \
@@ -384,92 +559,23 @@ def main(argv):
         print("--- Beginning evaluation on " + pred_dir + " with threshold " + \
                 str(matchscore_threshold) + " ---\n")
 
-        for pred_file in file_names:
-            image_filename = pred_file.replace(DATA_EXTENSION, IMAGE_EXTENSION)
-            gt_filename = pred_file.replace(IMAGE_EXTENSION, DATA_EXTENSION)
-
-            image = None
-            pred_page = None
-            gt_page = None
-
-            image_output = False
-
-            if not images_outputted and out_dir and image_dir:
-                try:
-                    image = cv2.imread(image_dir + image_filename)
-                    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                    image_output = True
-                except cv2.error:
-                    print("Image file " + image_dir + image_filename + 
-                            " could not be read. Skipping image output.\n")
-
-            # Skip evaluation if prediction file cannot be opened or parsed.
-            try:
-                pred_page = et.parse(pred_dir + pred_file).getroot() \
-                    .find(PAGE_TAG, NAMESPACE_PRED)
-            except IOError:
-                print("Could not open " + pred_dir + pred_file + \
-                        ". Skipping evaluation.\n")
-                skipped_evals.append(pred_file)
-                continue
-            except et.ParseError:
-                print("Could not parse " + pred_dir + pred_file + \
-                        ". Skipping evaluation.\n")
-                skipped_evals.append(pred_file)
-                continue
-
-            # Skip evaluation if ground truth files cannot be parsed or opened.
-            try:
-                gt_page = et.parse(gt_dir + \
-                        gt_filename).getroot().find(PAGE_TAG, NAMESPACE_GT)
-            except IOError:
-                print("Could not open " + gt_dir + gt_filename + \
-                        ". Skipping evaluation.\n")
-                skipped_evals.append(pred_file)
-                continue
-            except et.ParseError:
-                print("Could not parse " + gt_dir + gt_filename + \
-                        ". Skipping evaluation.\n")
-                skipped_evals.append(pred_file)
-                continue
-
-            gt_image_width = int(gt_page.get(WIDTH_TAG))
-            gt_image_height = int(gt_page.get(HEIGHT_TAG))
-            pred_image_width = int(pred_page.get(WIDTH_TAG))
-            pred_image_height = int(pred_page.get(HEIGHT_TAG))
-
-            # Skip evaluation if image dimensions do not match
-            if gt_image_width != pred_image_width or \
-                gt_image_height != pred_image_height:
-                print("Ground truth and prediction image dimensions do " + \
-                        "not match. Skipping evaluation. \n")
-                skipped_evals.append(pred_file)
-                continue
-
+        for pred_file in pred_lines:
             print("Evaluating " + pred_file + "...")
 
-            pred_lines = get_line_coords(pred_page, NAMESPACE_PRED)
-            gt_lines = get_line_coords(gt_page, NAMESPACE_GT)
-
-            # Write output image
-            if not images_outputted and out_dir and image_output and image.size:
-                try:
-                    cv2.imwrite(out_dir + image_filename, output_image(image, 
-                        pred_lines, gt_lines))
-                except cv2.error:
-                    print("Image file " + out_dir + image_filename + \
-                            " could not be wrriten to. Skipping image " + \
-                            "output. \n")
-
-            result = evaluate(pred_lines, gt_lines, 
-                    (gt_image_height, gt_image_width), matchscore_threshold)
-            detection_accuracy += result[DETECTION_RESULT_IDX]
-            recognition_accuracy += result[RECOGNITION_RESULT_IDX]
-            f_measure += result[F_MEASURE_RESULT_IDX]
+            num_gt_lines = len(gt_lines[pred_file])
+            num_pred_lines = len(pred_lines[pred_file])
+            result = evaluate(num_pred_lines, num_gt_lines, 
+                    iu_scores[pred_file], matchscore_threshold)
+            detection_accuracy += num_gt_lines * \
+                    result[DETECTION_RESULT_IDX]
+            recognition_accuracy += num_pred_lines * \
+                    result[RECOGNITION_RESULT_IDX]
             evaluated += 1
 
             if results_output:
                 results_file.write(pred_file + "," + \
+                        str(len(gt_lines[pred_file])) + "," + \
+                        str(len(pred_lines[pred_file])) + "," + \
                         str(result[DETECTION_RESULT_IDX]) + "," + \
                         str(result[RECOGNITION_RESULT_IDX]) + "," + \
                         str(result[F_MEASURE_RESULT_IDX]) + "\n")
@@ -479,28 +585,25 @@ def main(argv):
                     str(result[F_MEASURE_RESULT_IDX]) + "\n")
 
         if evaluated:
-            detection_accuracy /= evaluated
-            recognition_accuracy /= evaluated
-            f_measure /= evaluated
+            total_gt_lines = sum(len(gt_lines[file_name]) for file_name in \
+                    gt_lines)
+            total_pred_lines = sum(len(pred_lines[file_name]) for file_name in \
+                    pred_lines)
+            detection_accuracy /= total_gt_lines
+            recognition_accuracy /= total_pred_lines
+            f_measure = 2 * detection_accuracy * recognition_accuracy / \
+                    (detection_accuracy + recognition_accuracy) if \
+                    detection_accuracy and recognition_accuracy else 0
 
             print("--- Global Results ---")
             print("DA: " + str(detection_accuracy) + 
                     ", RA: " + str(recognition_accuracy) + ", F: " + \
-                            str(f_measure))
+                            str(f_measure) + "\n")
 
             if results_range_output:
                 results_range_file.write(str(matchscore_threshold) + "," + \
                         str(detection_accuracy) + "," + \
                         str(recognition_accuracy) + "," + str(f_measure) + "\n")
-
-            if len(skipped_evals) > 0:
-                print("\nSkipped evaluations (" + str(len(skipped_evals)) + \
-                        "):")
-
-                for file_name in skipped_evals:
-                    print(file_name)
-        
-                print()
         else:
             print("No files evaluated. Check that the ground truth " + \
                     "directory exists and contains valid files.")
@@ -508,10 +611,6 @@ def main(argv):
         if results_output:
             results_file.close()
 
-        # Ensure images are only outputted on the first iteration
-        if not images_outputted:
-            images_outputted = True
-    
         # End iteration if range was not specified
         if not iterate_thresh:
             break
