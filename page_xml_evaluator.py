@@ -27,15 +27,19 @@ import numpy as np
 MATCHSCORE_THRESHOLD = 0.95
 
 OUTPUT_DIR_OPT = "-o"
-IMAGE_DIR_OPT = "-i"
+IMAGE_OUT_OPT = "-i"
 MATCH_THRESH_OPT = "-t"
 LOWER_THRESH_OPT = "-l"
 UPPER_THRESH_OPT = "-u"
 THRESH_STEPS_OPT = "-s"
+IMAGE_OUT_PRED_ARG = "p"
+IMAGE_OUT_GT_ARG = "g"
+IMAGE_OUT_BOTH_ARG = "b"
 OPTIONS = "o:i:t:l:u:s:"
-PRED_DIR_OPT = 0
-GT_DIR_OPT = 1
-ARGS = 2
+IMAGE_DIR_OPT = 0
+PRED_DIR_OPT = 1
+GT_DIR_OPT = 2
+ARGS = 3
 
 DATA_EXTENSION = ".xml"
 IMAGE_EXTENSION = ".tif"
@@ -108,12 +112,13 @@ Returns the intersection over union (IU) value of the two bounding boxes.
 
 first: an image containing the first (filled) bounding box.
 second: an image containing the second (filled) bounding box.
+image: the inverted binarized original image.
 '''
-def get_intersection_over_union(first, second):
-    intersection = cv2.bitwise_and(first, second)
+def get_intersection_over_union(first, second, image):
+    intersection = cv2.bitwise_and(cv2.bitwise_and(first, second), image)
     intersection_score = cv2.countNonZero(intersection)
 
-    union = cv2.bitwise_or(first, second)
+    union = cv2.bitwise_and(cv2.bitwise_or(first, second), image)
     union_score = cv2.countNonZero(union)
 
     return intersection_score / union_score
@@ -127,8 +132,9 @@ the reset of the predicted lines will be skipped.
 pred_lines: a list of coordinates for predicted lines.
 gt_lines: a list of coordinates for ground truth lines.
 shape: shape of the document image.
+image: the inverted binarized original image.
 '''
-def get_maximum_iu_scores(pred_lines, gt_lines, shape):
+def get_maximum_iu_scores(pred_lines, gt_lines, shape, image):
     '''
     Finds the maximum IU scores by first iterating over set_1 and pruning set_2
 
@@ -153,7 +159,8 @@ def get_maximum_iu_scores(pred_lines, gt_lines, shape):
                                                 np.array(line_2, dtype=np.int32), 
                                                 1)
 
-                    matchscore = get_intersection_over_union(img_1, img_2)
+                    matchscore = get_intersection_over_union(img_1, img_2, 
+                            image)
 
                     # Make assignments if IU score is > 0 first
                     if matchscore > max_iu_score:
@@ -232,16 +239,18 @@ pred_lines: a list of coordinates for predicted lines. These will be displayed
 in green.
 gt_lines: a list of coordinates for ground truth lines. These will be displayed 
 in red.
+image_out_pred: whether or not to include prediction overlay on image output.
+image_out_gt: whether or not to include ground truth overlay on image output.
 '''
-def output_image(image, pred_lines, gt_lines):
-    if pred_lines:
+def output_image(image, pred_lines, gt_lines, image_out_pred, image_out_gt):
+    if image_out_pred and pred_lines:
         # Draw each predicted line bounding box on image
         for lineCoords in pred_lines:
             lineCoords = np.array(lineCoords, np.int32)
             image = cv2.polylines(image, [lineCoords], LINES_CLOSED, 
                     PRED_LINE_COLOR)
                 
-    if gt_lines:
+    if image_out_gt and gt_lines:
         # Draw each ground truth bounding box on image
         for lineCoords in gt_lines:
             lineCoords = np.array(lineCoords, np.int32)
@@ -270,9 +279,17 @@ def parse_args(argv):
             if opt == OUTPUT_DIR_OPT:
                 parsed_args[OUTPUT_DIR_OPT] = arg + "/" if arg[-1] != "/" else \
                         arg
-            elif opt == IMAGE_DIR_OPT:
-                parsed_args[IMAGE_DIR_OPT] = arg + "/" if arg[-1] != "/" else \
-                        arg
+            elif opt == IMAGE_OUT_OPT:
+                if arg == IMAGE_OUT_PRED_ARG:
+                    parsed_args[IMAGE_OUT_PRED_ARG] = True 
+                elif arg == IMAGE_OUT_GT_ARG:
+                    parsed_args[IMAGE_OUT_GT_ARG] = True
+                elif arg == IMAGE_OUT_BOTH_ARG:
+                    parsed_args[IMAGE_OUT_PRED_ARG] = True 
+                    parsed_args[IMAGE_OUT_GT_ARG] = True
+                else:
+                    raise getopt.GetoptError("Invalid image output " + 
+                        "argument specified.")
             elif opt == MATCH_THRESH_OPT or opt == LOWER_THRESH_OPT or \
                     opt == UPPER_THRESH_OPT:
                 arg = float(arg)
@@ -310,18 +327,21 @@ def parse_args(argv):
                     "than or equal to the upper threshold.")
 
 
-        if parsed_args.get(IMAGE_DIR_OPT) and not parsed_args.get(OUTPUT_DIR_OPT):
+        if parsed_args.get(IMAGE_OUT_OPT) and not parsed_args.get(OUTPUT_DIR_OPT):
             raise getopt.GetoptError("-o flag needs to be specfied when -i " + \
                     "flag is used.")
 
+        parsed_args[IMAGE_DIR_OPT] = args[IMAGE_DIR_OPT] + "/" if \
+                args[IMAGE_DIR_OPT][-1] != "/" else args[IMAGE_DIR_OPT]
         parsed_args[PRED_DIR_OPT] = args[PRED_DIR_OPT] + "/" if \
                 args[PRED_DIR_OPT][-1] != "/" else args[PRED_DIR_OPT]
         parsed_args[GT_DIR_OPT] = args[GT_DIR_OPT] + "/" if \
                 args[GT_DIR_OPT][-1] != "/" else args[GT_DIR_OPT]
     except getopt.GetoptError as err:
         print("ERROR: " + str(err) + "\n")
-        print("Usage: python page_xml_evaluator.py [OPTION]... pred_dir " + \
-                "gt_dir\n")
+        print("Usage: python page_xml_evaluator.py [OPTION]... image_dir " + \
+                "pred_dir gt_dir\n")
+        print("image_dir - the directory containing the original images.")
         print("pred_dir - the directory containing the XML files to evaluate.")
         print("gt_dir - the directory containing the ground truth XML " + \
                 "files.\n")
@@ -329,10 +349,9 @@ def parse_args(argv):
         print("-o out_dir - output evaluation results and document images " + \
                 "with ground truth and prediction overlay to the desired " + \
                 "output directory (out_dir).")
-        print("-i image_dir - include document images with ground truth " + \
+        print("-i  include document images with ground truth " + \
                 "and prediction overlay in output. The -o flag must also " + \
-                "be set. image_dir is the directory containing the " + \
-                "document images.")
+                "be set.")
         print("-t n - sets the matchscore threshold. Must be a real value " + \
                 "between 0 and 1 (inclusive). Cannot be set alongside -u " + \
                 "or -l. Default value is " + str(MATCHSCORE_THRESHOLD) + ".")
@@ -362,13 +381,16 @@ pred_dir: the directory containing prediction files.
 gt_dir: the directory containing ground truth files.
 our_dir: the output directory.
 image_dir: the directory containg the original images.
+image_out_pred: whether or not to include prediction overlay on image output.
+image_out_gt: whether or not to include ground truth overlay on image output.
 '''
-def preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir):
+def preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir, image_out_pred, 
+        image_out_gt):
     pred_lines = {}
     gt_lines = {}
     iu_scores = {}
     skipped_evals = []
-    skipped_images = []
+    image_output = image_out_pred or image_out_gt
 
     for pred_file in file_names:
         gt_filename = pred_file.replace(IMAGE_EXTENSION, DATA_EXTENSION)
@@ -376,7 +398,7 @@ def preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir):
         pred_page = None
         gt_page = None
         image = None
-        image_output = False
+        binarized = None
 
         print("Processing " + pred_file + "...")
 
@@ -410,21 +432,6 @@ def preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir):
             skipped_evals.append(pred_file)
             continue
 
-        # Get prediction and ground truth line coordinates
-        pred_lines[pred_file] = get_line_coords(pred_page, NAMESPACE_PRED)
-        gt_lines[pred_file] = get_line_coords(gt_page, NAMESPACE_GT)
-
-        # Retrieve corresponding original image
-        if out_dir and image_dir:
-            try:
-                image = cv2.imread(image_dir + image_filename)
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                image_output = True
-            except cv2.error:
-                print("Image file " + image_dir + image_filename + 
-                        " could not be read. Skipping image output.")
-                skipped_images.append(pred_file)
-
         gt_image_width = int(gt_page.get(WIDTH_TAG))
         gt_image_height = int(gt_page.get(HEIGHT_TAG))
         pred_image_width = int(pred_page.get(WIDTH_TAG))
@@ -440,19 +447,43 @@ def preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir):
 
         shape = (gt_image_height, gt_image_width)
 
+        # Get prediction and ground truth line coordinates
+        pred_lines[pred_file] = get_line_coords(pred_page, NAMESPACE_PRED)
+        gt_lines[pred_file] = get_line_coords(gt_page, NAMESPACE_GT)
+
+        # Retrieve corresponding original image
+        try:
+            image = cv2.imread(image_dir + image_filename)
+            grayscale = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            ret, binarized = cv2.threshold(grayscale, LOWER_BINARY_THRESH, 
+                    UPPER_BINARY_THRESH, cv2.THRESH_BINARY_INV)
+        except cv2.error:
+            print("Image file " + image_dir + image_filename + 
+                    " could not be read. File will not be evaluated.")
+            skipped_evals.append(pred_file)
+            continue
+
+
         # Project predicted and ground truth bounding boxes onto original image 
         # and write this image to disk
         if out_dir and image_output and image.size:
             try:
+                print("Writing image output to disk...")
                 cv2.imwrite(out_dir + image_filename, output_image(image, 
-                    pred_lines[pred_file], gt_lines[pred_file]))
+                    pred_lines[pred_file], gt_lines[pred_file], 
+                    image_out_pred, image_out_gt))
             except cv2.error:
                 print("Image file " + out_dir + image_filename + \
                         " could not be wrriten to. Skipping image " + \
                         "output.")
 
+        print("Calculating IU scores...")
         iu_scores[pred_file] = get_maximum_iu_scores(pred_lines[pred_file], 
-                gt_lines[pred_file], shape)
+                gt_lines[pred_file], shape, binarized)
+        mean_iu_score = 0 if not iu_scores[pred_file] else \
+                sum(iu_scores[pred_file]) / len(iu_scores[pred_file])
+        print("Mean IU score: " + str(mean_iu_score))
 
         print()
 
@@ -466,16 +497,6 @@ def preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir):
 
         print()
 
-    # Print out files that will have no image output
-    if out_dir and image_dir and len(skipped_images) > 0:
-        print("Files that will not have image output (" + \
-                str(len(skipped_images)) + "):")
-
-        for file_name in skipped_images:
-            print(file_name)
-
-        print()
-    
     return (pred_lines, gt_lines, iu_scores)
 
 '''
@@ -490,6 +511,9 @@ def main(argv):
     pred_dir = args.get(PRED_DIR_OPT, "")
     gt_dir = args.get(GT_DIR_OPT, "")
     out_dir = args.get(OUTPUT_DIR_OPT, "")
+
+    image_out_pred = args.get(IMAGE_OUT_PRED_ARG, False)
+    image_out_gt = args.get(IMAGE_OUT_GT_ARG, False)
 
     iterate_thresh = args.get(LOWER_THRESH_OPT) != None or \
             args.get(UPPER_THRESH_OPT) != None
@@ -530,7 +554,8 @@ def main(argv):
     # Pre-process files for evaluation
     print("Pre-processing files for evaluation...\n")
     pred_lines, gt_lines, iu_scores = \
-        preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir)
+        preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir, 
+                image_out_pred, image_out_gt)
 
     #Iterate through all matchscore thresholds if range is specified
     for matchscore_threshold in np.linspace(matchscore_threshold, \
