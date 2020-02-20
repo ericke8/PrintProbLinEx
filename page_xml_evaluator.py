@@ -43,9 +43,10 @@ ARGS = 3
 
 DATA_EXTENSION = ".xml"
 IMAGE_EXTENSION = ".tif"
+RESULTS_FILE_EXT = ".csv"
 RESULTS_FILE = "results"
 RESULTS_RANGE_FILE = "results_range"
-RESULTS_FILE_EXT = ".csv"
+IU_FILE = "iu_scores"
 
 PAGE_TAG = "ns0:Page"
 TEXTREGION_TAG = "ns0:TextRegion"
@@ -391,6 +392,20 @@ def preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir, image_out_pred,
     iu_scores = {}
     skipped_evals = []
     image_output = image_out_pred or image_out_gt
+    iu_file = None
+    iu_file_name = IU_FILE + RESULTS_FILE_EXT
+    iu_file_output = out_dir != ""
+    weighted_avg_iu_score = 0
+
+    if out_dir:
+        try:
+            iu_file = open(out_dir + iu_file_name, 'w+')
+            iu_file.write("File,Matches,Mean IU\n")
+        except FileNotFoundError:
+            print("Could not open " + out_dir + iu_file_name + 
+                    " for writing. Check that the specified output " + \
+                    "directory exists.\n")
+            iu_file_output = False
 
     for pred_file in file_names:
         gt_filename = pred_file.replace(IMAGE_EXTENSION, DATA_EXTENSION)
@@ -481,11 +496,20 @@ def preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir, image_out_pred,
         print("Calculating IU scores...")
         iu_scores[pred_file] = get_maximum_iu_scores(pred_lines[pred_file], 
                 gt_lines[pred_file], shape, binarized)
+        weighted_avg_iu_score += sum(iu_scores[pred_file])
         mean_iu_score = 0 if not iu_scores[pred_file] else \
                 sum(iu_scores[pred_file]) / len(iu_scores[pred_file])
         print("Mean IU score: " + str(mean_iu_score))
 
+        if out_dir and iu_file_output:
+            iu_file.write(pred_file + "," + str(len(iu_scores[pred_file])) + \
+                    "," + str(mean_iu_score) + "\n")
+
         print()
+
+    weighted_avg_iu_score /= sum(len(iu_scores[filename]) for filename in \
+            iu_scores)
+    print("Global mean IU score: " + str(weighted_avg_iu_score) + "\n")
 
     # Print out files that will not be evaluated
     if len(skipped_evals) > 0:
@@ -496,6 +520,9 @@ def preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir, image_out_pred,
             print(file_name)
 
         print()
+
+    if iu_file_output:
+        iu_file.close()
 
     return (pred_lines, gt_lines, iu_scores)
 
