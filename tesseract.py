@@ -61,7 +61,7 @@ def main(argv):
         image_dir = args[0] + "/" if args[0][-1] != "/" else args[0]
         out_dir = args[1] + "/" if args[1][-1] != "/" else args[1]
     except getopt.GetoptError:
-        print("Usage: python3 tesseract.py -t image_dir out_dir")
+        print("Usage: python3 tesseract.py [OPTION] image_dir out_dir")
         print("image_dir - the directory containing the document images to " + \
                 "segment.")
         print("out_dir - the directory to output segmentation results to.\n")
