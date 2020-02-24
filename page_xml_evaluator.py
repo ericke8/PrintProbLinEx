@@ -16,6 +16,8 @@ Author: Jason Vega
 Email: jasonvega14@yahoo.com
 '''
 
+from scipy.optimize import linear_sum_assignment
+
 import cv2
 import matplotlib.pyplot as plt
 import os
@@ -125,10 +127,38 @@ def get_intersection_over_union(first, second, image):
     return intersection_score / union_score
 
 '''
+Returns a matrix of intersection-over-union values for a given document.
+
+pred_lines: a list of coordinates for predicted lines.
+gt_lines: a list of coordinates for ground truth lines.
+shape: shape of the document image.
+image: the inverted binarized original image.
+'''
+def get_iu_matrix(pred_lines, gt_lines, shape, image):
+    iu_matrix = np.zeros((len(pred_lines), len(gt_lines)))
+    gt_images = []
+
+    for i in range(len(pred_lines)):
+        pred_image = cv2.fillConvexPoly(np.zeros(shape, np.uint8),
+                np.array(pred_lines[i], dtype=np.int32), 1)
+
+        for j in range(len(gt_lines)):
+            # Memoize image on first outer loop iteration
+            if not i:
+                gt_image = cv2.fillConvexPoly(np.zeros(shape, np.uint8), 
+                        np.array(gt_lines[j], dtype=np.int32), 1)
+                gt_images.append(gt_image)
+            else:
+                gt_image = gt_images[j]
+            
+            iu_matrix[i][j] = get_intersection_over_union(pred_image, gt_image,
+                    image)
+
+    return iu_matrix
+
+'''
 Returns a list of the maximum intersection-over-union score for each one-to-one
-assignment. Each predicted line is assigned to a unique ground truth line that 
-gives that maximum score. If there are no more ground truth lines to assign, 
-the reset of the predicted lines will be skipped.
+assignment. One-to-one assignments are made using the Hungarian algorithm.
 
 pred_lines: a list of coordinates for predicted lines.
 gt_lines: a list of coordinates for ground truth lines.
@@ -136,59 +166,15 @@ shape: shape of the document image.
 image: the inverted binarized original image.
 '''
 def get_maximum_iu_scores(pred_lines, gt_lines, shape, image):
-    '''
-    Finds the maximum IU scores by first iterating over set_1 and pruning set_2
+    iu_scores = []
+    iu_matrix = get_iu_matrix(pred_lines, gt_lines, shape, image)
+    match_rows, match_cols = linear_sum_assignment(iu_matrix, True)
 
-    set_1: the set to iterate over.
-    set_2: the set to prune.
-    '''
-    def find_maximum_iu_scores(set_1, set_2):
-        iu_scores = []
-        unmatched = 0
+    for row, col in zip(match_rows, match_cols):
+        iu_scores.append(iu_matrix[row][col])
 
-        set_2 = set_2.copy()
+    return iu_scores
 
-        for line_1 in set_1:
-            if set_2:
-                img_1 = cv2.fillConvexPoly(np.zeros(shape, np.uint8), 
-                                          np.array(line_1, dtype=np.int32), 1)
-                max_iu_score = 0
-                max_iu_score_line = None
-
-                for line_2 in set_2:
-                    img_2 = cv2.fillConvexPoly(np.zeros(shape, np.uint8), 
-                                                np.array(line_2, dtype=np.int32), 
-                                                1)
-
-                    matchscore = get_intersection_over_union(img_1, img_2, 
-                            image)
-
-                    # Make assignments if IU score is > 0 first
-                    if matchscore > max_iu_score:
-                        max_iu_score = matchscore
-                        max_iu_score_line = line_2
-
-                if max_iu_score_line:
-                    iu_scores.append(max_iu_score)
-                    set_2.remove(max_iu_score_line)
-                else:
-                    unmatched += 1
-            else:
-                unmatched += 1
-
-        # Assign remaining lines arbitrarily
-        iu_scores += min(unmatched, len(set_2)) * [0]
-
-        return iu_scores
-    
-    # Compare two orders of iteration and prefer the higher sum of IU scores
-    iu_scores_1 = find_maximum_iu_scores(pred_lines, gt_lines)
-    iu_scores_2 = find_maximum_iu_scores(gt_lines, pred_lines)
-
-    if sum(iu_scores_1) > sum(iu_scores_2):
-        return iu_scores_1
-    else:
-        return iu_scores_2
 
 '''
 Returns the number of one-to-one matches between the predicted lines and ground 
@@ -201,11 +187,11 @@ threshold: the threshold for one-to-one match acceptance.
 '''
 def get_one_to_one_matches(iu_scores, threshold):
     matches = 0
-
+    
     for iu_score in iu_scores:
         if iu_score >= threshold:
             matches += 1
-
+    
     return matches
 
 '''
@@ -496,6 +482,8 @@ def preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir, image_out_pred,
         print("Calculating IU scores...")
         iu_scores[pred_file] = get_maximum_iu_scores(pred_lines[pred_file], 
                 gt_lines[pred_file], shape, binarized)
+        #iu_scores[pred_file] = get_iu_matrix(pred_lines[pred_file],
+                #gt_lines[pred_file], shape, binarized)
         weighted_avg_iu_score += sum(iu_scores[pred_file])
         mean_iu_score = 0 if not iu_scores[pred_file] else \
                 sum(iu_scores[pred_file]) / len(iu_scores[pred_file])
