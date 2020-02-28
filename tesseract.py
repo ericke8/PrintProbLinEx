@@ -61,11 +61,11 @@ def main(argv):
         image_dir = args[0] + "/" if args[0][-1] != "/" else args[0]
         out_dir = args[1] + "/" if args[1][-1] != "/" else args[1]
     except getopt.GetoptError:
-        print("Usage: python3 tesseract.py [OPTION] image_dir out_dir")
+        print("Usage: python3 tesseract.py [OPTION] image_dir out_dir\n")
         print("image_dir - the directory containing the document images to " + \
                 "segment.")
         print("out_dir - the directory to output segmentation results to.\n")
-        print("Optional flags:\n")
+        print("Optional flags:")
         print("-t - record segmentation time for each document. Results " + \
                 "are written to a file in out_dir.")
 
@@ -130,11 +130,11 @@ def main(argv):
                         str(y_coord + line_height)
                 bottom_left = str(x_coord) + "," + str(y_coord + line_height)
 
-                pointsAttr = top_left + " " + top_right + " " + bottom_right + \
+                points_attr = top_left + " " + top_right + " " + bottom_right + \
                     " " + bottom_left
 
                 line = et.SubElement(region, TEXT_LINE_TAG)
-                et.SubElement(line, COORDS_TAG, points=pointsAttr)
+                et.SubElement(line, COORDS_TAG, points=points_attr)
 
             tree = et.ElementTree(root)
 
