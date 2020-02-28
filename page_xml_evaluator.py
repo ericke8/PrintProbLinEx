@@ -90,7 +90,7 @@ page: the page element to search for text line coordinates.
 namespace: namespace for this page.
 '''
 def get_line_coords(page, namespace):
-    lineList = []
+    line_list = []
     
     for region in page.findall(TEXTREGION_TAG, namespace):
         for line in region.findall(TEXTLINE_TAG, namespace):
@@ -106,9 +106,9 @@ def get_line_coords(page, namespace):
                 
                 coords[i] = xy_coords
             
-            lineList.append(coords)
-                
-    return lineList
+            line_list.append(coords)
+
+    return line_list
 
 '''
 Returns the intersection over union (IU) value of the two bounding boxes.
@@ -232,16 +232,16 @@ image_out_gt: whether or not to include ground truth overlay on image output.
 def output_image(image, pred_lines, gt_lines, image_out_pred, image_out_gt):
     if image_out_pred and pred_lines:
         # Draw each predicted line bounding box on image
-        for lineCoords in pred_lines:
-            lineCoords = np.array(lineCoords, np.int32)
-            image = cv2.polylines(image, [lineCoords], LINES_CLOSED, 
+        for line_coords in pred_lines:
+            line_coords = np.array(line_coords, np.int32)
+            image = cv2.polylines(image, [line_coords], LINES_CLOSED, 
                     PRED_LINE_COLOR)
                 
     if image_out_gt and gt_lines:
         # Draw each ground truth bounding box on image
-        for lineCoords in gt_lines:
-            lineCoords = np.array(lineCoords, np.int32)
-            image = cv2.polylines(image, [lineCoords], LINES_CLOSED, 
+        for line_coords in gt_lines:
+            line_coords = np.array(line_coords, np.int32)
+            image = cv2.polylines(image, [line_coords], LINES_CLOSED, 
                     GT_LINE_COLOR)
 
     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
@@ -336,8 +336,12 @@ def parse_args(argv):
         print("-o out_dir - output evaluation results and document images " + \
                 "with ground truth and prediction overlay to the desired " + \
                 "output directory (out_dir).")
-        print("-i  include document images with ground truth " + \
-                "and prediction overlay in output. The -o flag must also " + \
+        print("-i opt - include document images with ground truth " + \
+                "and prediction overlay in output. opt dictates what " + \
+                "should be overlayed and must be one of the following: " + \
+                "p - output predicted lines only, g - output ground truth " + \
+                "lines only, or b - output both predicted and ground truth " + \
+                "lines. The -o flag must also " + \
                 "be set.")
         print("-t n - sets the matchscore threshold. Must be a real value " + \
                 "between 0 and 1 (inclusive). Cannot be set alongside -u " + \
@@ -461,7 +465,7 @@ def preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir, image_out_pred,
                     UPPER_BINARY_THRESH, cv2.THRESH_BINARY_INV)
         except cv2.error:
             print("Image file " + image_dir + image_filename + 
-                    " could not be read. File will not be evaluated.")
+                    " could not be read. File will not be evaluated.\n")
             skipped_evals.append(pred_file)
             continue
 
@@ -496,7 +500,7 @@ def preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir, image_out_pred,
         print()
 
     weighted_avg_iu_score /= sum(len(iu_scores[filename]) for filename in \
-            iu_scores)
+            iu_scores) if iu_scores else 1
     print("Global mean IU score: " + str(weighted_avg_iu_score) + "\n")
 
     # Print out files that will not be evaluated
@@ -571,6 +575,10 @@ def main(argv):
     pred_lines, gt_lines, iu_scores = \
         preprocess(file_names, pred_dir, gt_dir, out_dir, image_dir, 
                 image_out_pred, image_out_gt)
+
+    if not iu_scores:
+        print("Nothing to evaluate!")
+        return
 
     #Iterate through all matchscore thresholds if range is specified
     for matchscore_threshold in np.linspace(matchscore_threshold, \
