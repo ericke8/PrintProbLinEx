@@ -1,6 +1,6 @@
  # Dockerfile for Data AUgMENtation
  ## About
- This Dockerfile will install all the necessary dependencies for the Data AUgMENtation project and also build it so that `daumen` works out of the box. The [Data AUgMENtation project](https://gitlab2.informatik.uni-wuerzburg.de/chw71yx/daumen) was developed by Cristoph Wick et al..
+ This Dockerfile will install all the necessary dependencies for the Data AUgMENtation project and also build it so that `daumen` works out of the box, in particular for using the Page Segmentation tool. The [Data AUgMENtation project](https://gitlab2.informatik.uni-wuerzburg.de/chw71yx/daumen) was developed by Cristoph Wick et al..
  ## Building the Docker image
  Run `docker build -t daumen .` to build the docker image. You can replace daumen with another name if you like.
  ## Accessing the terminal
