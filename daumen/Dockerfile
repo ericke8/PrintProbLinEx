@@ -59,10 +59,4 @@ WORKDIR /daumen/build
 RUN cmake -DDAUMEN_AUDIO=OFF -DCAFFE_CPU_ONLY=ON ..
 RUN make -j 12 && make install
 RUN /sbin/ldconfig -v
-WORKDIR /daumen/examples/PageSegmentation
-RUN wget https://gitlab2.informatik.uni-wuerzburg.de/chw71yx/daumen/-/raw/master/examples/PageSegmentation/model_ignore_background.json \
-	&& wget https://gitlab2.informatik.uni-wuerzburg.de/chw71yx/daumen/-/raw/master/examples/PageSegmentation/net_ignore_background.prototxt \
-	&& wget https://gitlab2.informatik.uni-wuerzburg.de/chw71yx/daumen/-/raw/master/examples/PageSegmentation/solver_ignore_background.prototxt \
-	&& wget https://gitlab2.informatik.uni-wuerzburg.de/chw71yx/daumen/-/raw/master/examples/PageSegmentation/model_post.json \
-	&& wget https://gitlab2.informatik.uni-wuerzburg.de/chw71yx/daumen/-/raw/master/examples/PageSegmentation/run_model.py
 WORKDIR /
