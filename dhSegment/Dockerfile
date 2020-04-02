@@ -1,4 +1,5 @@
 FROM ubuntu:latest
+ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \ 
     python3 \
@@ -38,7 +39,7 @@ RUN add-apt-repository ppa:graphics-drivers/ppa
 RUN apt-key adv --fetch-keys http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/7fa2af80.pub
 RUN echo "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64 /" | tee /etc/apt/sources.list.d/cuda.list
 #installing CUDA-10.0
-RUN apt-get -o Dpkg::Options::="--force-overwrite" install cuda-10-0 cuda-drivers
+RUN apt-get -o Dpkg::Options::="--force-overwrite" install -y cuda-10-0 cuda-drivers
 #setup your paths
 RUN echo 'export PATH=/usr/local/cuda-10.0/bin:$PATH' >> ~/.bashrc
 RUN echo 'export LD_LIBRARY_PATH=/usr/local/cuda-10.0/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
