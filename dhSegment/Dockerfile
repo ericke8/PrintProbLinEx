@@ -47,9 +47,9 @@ RUN echo 'export LD_LIBRARY_PATH=/usr/local/cuda-10.0/lib64:$LD_LIBRARY_PATH' >>
 RUN . ~/.bashrc
 RUN ldconfig
 #install cuDNN v7.5
-RUN export CUDNN_TAR_FILE="cudnn-10.1-linux-x64-v7.5.0.56.tgz"
-RUN wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=118NrkAlBFzs0tgRgLcFzt0sSfkatllcn' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=118NrkAlBFzs0tgRgLcFzt0sSfkatllcn" -O cudnn-10.1-linux-x64-v7.5.0.56.tgz && rm -rf /tmp/cookies.txt
-RUN tar -xzvf ${CUDNN_TAR_FILE}
+ENV CUDNN_TAR_FILE cudnn-10.1-linux-x64-v7.5.0.56.tgz
+RUN wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=118NrkAlBFzs0tgRgLcFzt0sSfkatllcn' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=118NrkAlBFzs0tgRgLcFzt0sSfkatllcn" -O $CUDNN_TAR_FILE && rm -rf /tmp/cookies.txt
+RUN tar -xzvf $CUDNN_TAR_FILE
 #copy the following files into the cuda toolkit directory.
 RUN cp -P cuda/include/cudnn.h /usr/local/cuda-10.0/include
 RUN cp -P cuda/lib64/libcudnn* /usr/local/cuda-10.0/lib64/
