@@ -47,11 +47,14 @@ def get_line_coords(page, namespace):
     return line_list
 
 def output_image(image, gt_lines):
+    centroid = np.mean(gt_lines, axis=1)
     # Draw each ground truth bounding box on image
     for line_coords in gt_lines:
         line_coords = np.array(line_coords, np.int32)
         image = cv2.polylines(image, [line_coords], LINES_CLOSED,
                 GT_LINE_COLOR, thickness=10)
+    
+    image[centroid[0], centroid[1]] = (255, 0, 0)
 
     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
@@ -71,6 +74,6 @@ for filename in os.listdir("OCR-D_IMG"):
     image = cv2.imread("OCR-D_IMG_PNG/" + filename)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-    cv2.imwrite("OCR-D_LABELS/" + filename, output_image(image, gt_lines)
+    cv2.imwrite("OCR-D_LABELS/" + filename, output_image(image, gt_lines))
 
     gt_file.close()
