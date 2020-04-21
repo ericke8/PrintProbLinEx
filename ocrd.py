@@ -47,14 +47,43 @@ def get_line_coords(page, namespace):
     return line_list
 
 def output_image(image, gt_lines):
-    centroid = np.mean(gt_lines, axis=1)
     # Draw each ground truth bounding box on image
     for line_coords in gt_lines:
         line_coords = np.array(line_coords, np.int32)
         image = cv2.polylines(image, [line_coords], LINES_CLOSED,
                 GT_LINE_COLOR, thickness=10)
-    
-    image[centroid[0], centroid[1]] = (255, 0, 0)
+        centroid = np.mean(line_coords, axis=0, dtype=np.uint32) 
+        first_quad = []
+        second_quad = []
+        third_quad = []
+        fourth_quad = []
+
+        for line_coord in line_coords:
+            if line_coord[0] >= centroid[0]:
+                if line_coord[1] <= centroid[1]:
+                    first_quad.append(line_coord)
+                else:
+                    fourth_quad.append(line_coord)
+            else:
+                if line_coord[1] <= centroid[1]:
+                    second_quad.append(line_coord)
+                else:
+                    third_quad.append(line_coord)
+
+        first_quad_distances = np.array(list(map(np.linalg.norm, centroid - first_quad)))
+        second_quad_distances = np.array(list(map(np.linalg.norm, centroid - second_quad)))
+        third_quad_distances = np.array(list(map(np.linalg.norm, centroid - third_quad)))
+        fourth_quad_distances = np.array(list(map(np.linalg.norm, centroid - fourth_quad)))
+
+        top_right_corner = first_quad[np.argmax(first_quad_distances)]
+        top_left_corner = second_quad[np.argmax(second_quad_distances)]
+        bottom_left_corner = third_quad[np.argmax(third_quad_distances)]
+        bottom_right_corner = fourth_quad[np.argmax(fourth_quad_distances)]
+        
+        cv2.line(image, (centroid[0], centroid[1]), (top_right_corner[0], top_right_corner[1]), (255, 0, 0), 3)
+        cv2.line(image, (centroid[0], centroid[1]), (top_left_corner[0], top_left_corner[1]), (255, 0, 0), 3)
+        cv2.line(image, (centroid[0], centroid[1]), (bottom_left_corner[0], bottom_left_corner[1]), (255, 0, 0), 3)
+        cv2.line(image, (centroid[0], centroid[1]), (bottom_right_corner[0], bottom_right_corner[1]), (255, 0, 0), 3)
 
     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
@@ -62,6 +91,7 @@ def output_image(image, gt_lines):
 
 for filename in os.listdir("OCR-D_IMG"):
     basename = filename.replace(".png", "")
+    print(basename)
     gt_file = open("OCR-D_GT/" + basename + ".xml", 'r')
 
     gt_page = et.parse(gt_file).getroot().find(PAGE_TAG, NAMESPACE_GT)
@@ -71,7 +101,7 @@ for filename in os.listdir("OCR-D_IMG"):
 
     gt_lines = get_line_coords(gt_page, NAMESPACE_GT)
 
-    image = cv2.imread("OCR-D_IMG_PNG/" + filename)
+    image = cv2.imread("OCR-D_IMG/" + filename)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     cv2.imwrite("OCR-D_LABELS/" + filename, output_image(image, gt_lines))
