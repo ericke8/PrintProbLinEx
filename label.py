@@ -19,6 +19,7 @@ from math import atan2
 PAGE_TAG = "ns0:Page"
 TEXTREGION_TAG = "ns0:TextRegion"
 TEXTLINE_TAG = "ns0:TextLine"
+BASELINE_TAG = "ns0:Baseline"
 COORDS_TAG = "ns0:Coords"
 POINTS_ATTR = "points"
 WIDTH_TAG = "imageWidth"
@@ -34,6 +35,7 @@ COORD_DELIM = ","
 THICKNESS = 10
 TOP_LINE_COLOR = (0, 255, 0)
 BOTTOM_LINE_COLOR = (0, 0, 255)
+BASELINE_COLOR = (255, 0, 0)
 LINES_CLOSED = True
 
 CHANNELS = 3
@@ -42,7 +44,8 @@ QUAD_CORNERS = 4
 LINE_POINTS = 2
 
 '''
-Returns a list of lines represented as lists of (x, y) coordinates.
+Returns a list of lines represented as lists of (x, y) coordinates defining 
+their bounding boxes.
 
 page: the XML page element to search for lines in.
 namespace: the namespace used in the XML file.
@@ -67,6 +70,37 @@ def get_line_coords(page, namespace):
             line_list.append(coords)
 
     return line_list
+
+'''
+Returns a list of baselines represented as lists of (x, y) coordinates.
+
+page: the XML page element to search for baselines in.
+namespace: the namespace used in the XML file.
+'''
+def get_baseline_coords(page, namespace):
+    baseline_list = []
+
+    for region in page.findall(TEXTREGION_TAG, namespace):
+        for line in region.findall(TEXTLINE_TAG, namespace):
+            baseline_element = line.find(BASELINE_TAG, namespace)
+
+            if baseline_element is None:
+                continue
+
+            coords = baseline_element.get(POINTS_ATTR).split()
+
+            # Convert each coordinate value from strings to integers
+            for i in range(len(coords)):
+                xy_coords = coords[i].split(COORD_DELIM)
+
+                for j in range(len(xy_coords)):
+                    xy_coords[j] = int(xy_coords[j])
+
+                coords[i] = xy_coords
+
+            baseline_list.append(coords)
+
+    return baseline_list
 
 '''
 Given a list of coordinates defining a bounding box, return the four corners
@@ -129,19 +163,40 @@ def get_corners(line_coords, centroid):
             bottom_left_corner)
 
 '''
-Produce a mask for the top and bottom lines of the text line bounding boxes.
+Produce a mask for the baselines of the text lines.
 
-gt_lines: the coordinates of the ground truth lines.
+baselines: the coordinates of the baselines.
 shape: the shape of the image
 thickness: the thickness of the lines in the mask.
 '''
-def get_mask(gt_lines, shape, thickness):
+def get_baseline_mask(baselines, shape, thickness):
+    image_shape = (shape[0], shape[1], CHANNELS)
+    baseline_image = np.zeros(image_shape, dtype=np.uint8)
+
+    # Draw each baseline on image
+    for baseline_coords in baselines:
+        baseline_coords = sorted(baseline_coords, key=lambda k: [k[0], k[1]])
+
+        cv2.polylines(baseline_image, 
+                [np.array(baseline_coords, np.int32)], not LINES_CLOSED, 
+                BASELINE_COLOR, thickness=thickness)
+    
+    return baseline_image
+
+'''
+Produce a mask for the top and bottom lines of the text line bounding boxes.
+
+lines: the coordinates of the line bounding boxes.
+shape: the shape of the image
+thickness: the thickness of the lines in the mask.
+'''
+def get_top_bottom_mask(lines, shape, thickness):
     image_shape = (shape[0], shape[1], CHANNELS)
     top_line_image = np.zeros(image_shape, dtype=np.uint8)
     bottom_line_image = np.zeros(image_shape, dtype=np.uint8)
 
-    # Draw each ground truth bounding box on image
-    for line_coords in gt_lines:
+    # Draw each bounding box on image
+    for line_coords in lines:
         if len(line_coords) < QUAD_CORNERS:
             continue
 
@@ -221,7 +276,6 @@ def get_mask(gt_lines, shape, thickness):
                 BOTTOM_LINE_COLOR, thickness=thickness)
 
     overlap = cv2.bitwise_or(top_line_image, bottom_line_image)
-    overlap = cv2.cvtColor(overlap, cv2.COLOR_RGB2BGR)
 
     return overlap
 
@@ -237,7 +291,8 @@ def main(argv):
     parser.add_argument("gt_dir", help="The ground truth directory.")
     parser.add_argument("out_dir", help="The desired output directory.")
     parser.add_argument("-t", "--thickness", help="Line thickness for the \
-            output mask.", default=THICKNESS, type=int, choices=range(1, THICKNESS + 1))
+            output mask.", default=THICKNESS, type=int, choices=range(1, 
+                THICKNESS + 1))
     args = parser.parse_args(argv)
     gt_dir = args.gt_dir
     out_dir = args.out_dir
@@ -250,12 +305,14 @@ def main(argv):
 
         gt_page = et.parse(gt_file).getroot().find(PAGE_TAG, NAMESPACE_GT)
         gt_lines = get_line_coords(gt_page, NAMESPACE_GT)
+        gt_baselines = get_baseline_coords(gt_page, NAMESPACE_GT)
         gt_image_height = int(gt_page.get(HEIGHT_TAG))
         gt_image_width = int(gt_page.get(WIDTH_TAG))
         gt_image_shape = (gt_image_height, gt_image_width)
 
-        cv2.imwrite(out_dir + "/" + filename.replace(".xml", ".png"), 
-                get_mask(gt_lines, gt_image_shape, thickness))
+        cv2.imwrite(out_dir + "/" + filename.replace(".xml", ".png"),
+                cv2.cvtColor(get_top_bottom_mask(gt_lines, gt_image_shape, 
+                    thickness), cv2.COLOR_RGB2BGR))
 
         gt_file.close()
 
