@@ -25,7 +25,7 @@ WIDTH_TAG = "imageWidth"
 HEIGHT_TAG = "imageHeight"
 
 NAMESPACE_GT = {
-    "ns0": "http://schema.primaresearch.org/PAGE/gts/pagecontent/2019-07-15",
+    "ns0": "http://schema.primaresearch.org/PAGE/gts/pagecontent/2013-07-15",
     "xsi": "http://www.w3.org/2001/XMLSchema-instance"
 }
 
@@ -37,6 +37,9 @@ BOTTOM_LINE_COLOR = (0, 0, 255)
 LINES_CLOSED = True
 
 CHANNELS = 3
+
+QUAD_CORNERS = 4
+LINE_POINTS = 2
 
 '''
 Returns a list of lines represented as lists of (x, y) coordinates.
@@ -66,6 +69,66 @@ def get_line_coords(page, namespace):
     return line_list
 
 '''
+Given a list of coordinates defining a bounding box, return the four corners
+in clockwise orientation.
+
+line_coords: the list of coordiantes defining the bounding box.
+centroid: the average (x, y) point of the coordinates.
+'''
+def get_corners(line_coords, centroid):
+    if len(line_coords) == QUAD_CORNERS:
+        x_sorted = line_coords[line_coords[:,0].argsort()]
+        left_y = x_sorted[:LINE_POINTS]
+        right_y = x_sorted[LINE_POINTS:]
+        left_y_sorted = left_y[left_y[:,1].argsort()]
+        right_y_sorted = right_y[right_y[:,1].argsort()]
+
+        top_left_corner = left_y_sorted[0]
+        bottom_left_corner = left_y_sorted[1]
+        top_right_corner = right_y_sorted[0]
+        bottom_right_corner = right_y_sorted[1]
+
+        return (top_left_corner, top_right_corner, bottom_right_corner, 
+                bottom_left_corner)
+
+    first_quad = []
+    second_quad = []
+    third_quad = []
+    fourth_quad = []
+
+    # Group coordinates by quadrant
+    for line_coord in line_coords:
+        if line_coord[0] >= centroid[0]:
+            if line_coord[1] <= centroid[1]:
+                first_quad.append(line_coord)
+            else:
+                fourth_quad.append(line_coord)
+        else:
+            if line_coord[1] <= centroid[1]:
+                second_quad.append(line_coord)
+            else:
+                third_quad.append(line_coord)
+
+    # Compute distances from centroid for each coordinate
+    first_quad_distances = np.array(list(map(np.linalg.norm, 
+        first_quad - centroid)))
+    second_quad_distances = np.array(list(map(np.linalg.norm, 
+        second_quad - centroid)))
+    third_quad_distances = np.array(list(map(np.linalg.norm, 
+        third_quad - centroid)))
+    fourth_quad_distances = np.array(list(map(np.linalg.norm, 
+        fourth_quad - centroid)))
+
+    # Find corner as the furthest point in each quadrant
+    top_left_corner = second_quad[np.argmax(second_quad_distances)]
+    top_right_corner = first_quad[np.argmax(first_quad_distances)]
+    bottom_right_corner = fourth_quad[np.argmax(fourth_quad_distances)]
+    bottom_left_corner = third_quad[np.argmax(third_quad_distances)]
+
+    return (top_left_corner, top_right_corner, bottom_right_corner, 
+            bottom_left_corner)
+
+'''
 Produce a mask for the top and bottom lines of the text line bounding boxes.
 
 gt_lines: the coordinates of the ground truth lines.
@@ -79,41 +142,17 @@ def get_mask(gt_lines, shape, thickness):
 
     # Draw each ground truth bounding box on image
     for line_coords in gt_lines:
+        if len(line_coords) < QUAD_CORNERS:
+            continue
+
         line_coords = np.array(line_coords, np.int32)
-        centroid = np.mean(line_coords, axis=0, dtype=np.uint32) 
-        first_quad = []
-        second_quad = []
-        third_quad = []
-        fourth_quad = []
+        line_moments = cv2.moments(line_coords)
+        centroid_x = int(line_moments["m10"] / line_moments["m00"])
+        centroid_y = int(line_moments["m01"] / line_moments["m00"])
+        centroid = np.array([centroid_x, centroid_y], dtype=np.uint32) 
 
-        # Group coordinates by quadrant
-        for line_coord in line_coords:
-            if line_coord[0] >= centroid[0]:
-                if line_coord[1] <= centroid[1]:
-                    first_quad.append(line_coord)
-                else:
-                    fourth_quad.append(line_coord)
-            else:
-                if line_coord[1] <= centroid[1]:
-                    second_quad.append(line_coord)
-                else:
-                    third_quad.append(line_coord)
-
-        # Compute distances from centroid for each coordinate
-        first_quad_distances = np.array(list(map(np.linalg.norm, 
-            first_quad - centroid)))
-        second_quad_distances = np.array(list(map(np.linalg.norm, 
-            second_quad - centroid)))
-        third_quad_distances = np.array(list(map(np.linalg.norm, 
-            third_quad - centroid)))
-        fourth_quad_distances = np.array(list(map(np.linalg.norm, 
-            fourth_quad - centroid)))
-
-        # Find corner as the furthest point in each quadrant
-        top_right_corner = first_quad[np.argmax(first_quad_distances)]
-        top_left_corner = second_quad[np.argmax(second_quad_distances)]
-        bottom_left_corner = third_quad[np.argmax(third_quad_distances)]
-        bottom_right_corner = fourth_quad[np.argmax(fourth_quad_distances)]
+        top_left_corner, top_right_corner, bottom_right_corner, \
+                bottom_left_corner = get_corners(line_coords, centroid)
 
         center_to_top_left = top_left_corner - centroid
         center_to_top_right = top_right_corner - centroid
