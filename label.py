@@ -33,15 +33,28 @@ NAMESPACE_GT = {
 COORD_DELIM = ","
 
 THICKNESS = 10
+BASELINE_COLOR = (255, 0, 0)
 TOP_LINE_COLOR = (0, 255, 0)
 BOTTOM_LINE_COLOR = (0, 0, 255)
-BASELINE_COLOR = (255, 0, 0)
 LINES_CLOSED = True
 
 CHANNELS = 3
 
 QUAD_CORNERS = 4
 LINE_POINTS = 2
+
+TOP_KEY = "TOP"
+BOTTOM_KEY = "BOTTOM"
+BASELINE_KEY = "BASELINE"
+NO_IMAGE = "NONE"
+ORIGINAL_IMAGE = "ORIGINAL"
+REDSCALE_IMAGE = "REDSCALE"
+
+LINE_COLORS = {
+    BASELINE_KEY: BASELINE_COLOR,
+    TOP_KEY: TOP_LINE_COLOR,
+    BOTTOM_KEY: BOTTOM_LINE_COLOR
+}
 
 '''
 Returns a list of lines represented as lists of (x, y) coordinates defining 
@@ -72,7 +85,7 @@ def get_line_coords(page, namespace):
     return line_list
 
 '''
-Returns a list of baselines represented as lists of (x, y) coordinates.
+Returns a list of baselines, each represented as lists of (x, y) coordinates.
 
 page: the XML page element to search for baselines in.
 namespace: the namespace used in the XML file.
@@ -97,7 +110,8 @@ def get_baseline_coords(page, namespace):
                     xy_coords[j] = int(xy_coords[j])
 
                 coords[i] = xy_coords
-
+        
+            coords = sorted(coords, key=lambda k: [k[0], k[1]])
             baseline_list.append(coords)
 
     return baseline_list
@@ -163,44 +177,26 @@ def get_corners(line_coords, centroid):
             bottom_left_corner)
 
 '''
-Produce a mask for the baselines of the text lines.
+Returns a dictionary of lists, where each list contains lists of coordinates
+representing an element of the textline (e.g. top line, baseline, etc.) for
+all text lines.
 
-baselines: the coordinates of the baselines.
-shape: the shape of the image
-thickness: the thickness of the lines in the mask.
-'''
-def get_baseline_mask(baselines, shape, thickness):
-    image_shape = (shape[0], shape[1], CHANNELS)
-    baseline_image = np.zeros(image_shape, dtype=np.uint8)
-
-    # Draw each baseline on image
-    for baseline_coords in baselines:
-        baseline_coords = sorted(baseline_coords, key=lambda k: [k[0], k[1]])
-
-        cv2.polylines(baseline_image, 
-                [np.array(baseline_coords, np.int32)], not LINES_CLOSED, 
-                BASELINE_COLOR, thickness=thickness)
-    
-    return baseline_image
-
-'''
-Produce a mask for the top and bottom lines of the text line bounding boxes.
-
+labels: a set of which elements of the text line to obtain coordinates for.
 lines: the coordinates of the line bounding boxes.
-shape: the shape of the image
-thickness: the thickness of the lines in the mask.
 '''
-def get_top_bottom_mask(lines, shape, thickness):
-    image_shape = (shape[0], shape[1], CHANNELS)
-    top_line_image = np.zeros(image_shape, dtype=np.uint8)
-    bottom_line_image = np.zeros(image_shape, dtype=np.uint8)
+def get_label_coords(labels, lines):
+    label_coords = {}
 
-    # Draw each bounding box on image
+    for label in labels:
+        label_coords[label] = []
+
     for line_coords in lines:
         if len(line_coords) < QUAD_CORNERS:
             continue
 
         line_coords = np.array(line_coords, np.int32)
+
+        # Get centroid of line
         line_moments = cv2.moments(line_coords)
         centroid_x = int(line_moments["m10"] / line_moments["m00"])
         centroid_y = int(line_moments["m01"] / line_moments["m00"])
@@ -219,29 +215,30 @@ def get_top_bottom_mask(lines, shape, thickness):
         top_line_angle_range = [atan2(-center_to_top_right[1], 
             center_to_top_right[0]), atan2(-center_to_top_left[1], 
                 center_to_top_left[0])]
-        right_line_angle_range = [atan2(-center_to_bottom_right[1], 
-            center_to_bottom_right[0]), atan2(-center_to_top_right[1], 
-                center_to_top_right[0])]
         bottom_line_angle_range = [atan2(-center_to_bottom_left[1], 
             center_to_bottom_left[0]), atan2(-center_to_bottom_right[1], 
                 center_to_bottom_right[0])]
+        '''
+        right_line_angle_range = [atan2(-center_to_bottom_right[1], 
+            center_to_bottom_right[0]), atan2(-center_to_top_right[1], 
+                center_to_top_right[0])]
+        '''
 
         # Create line groups for coordinates initialized with corners
         top_line = [[top_left_corner[0], top_left_corner[1]], 
                 [top_right_corner[0], top_right_corner[1]]]
-        right_line = [[top_right_corner[0], top_right_corner[1]], 
-                [bottom_right_corner[0], bottom_right_corner[1]]]
         bottom_line = [[bottom_right_corner[0], bottom_right_corner[1]], 
                 [bottom_left_corner[0], bottom_left_corner[1]]]
+        '''
+        right_line = [[top_right_corner[0], top_right_corner[1]], 
+                [bottom_right_corner[0], bottom_right_corner[1]]]
         left_line = [[bottom_left_corner[0], bottom_left_corner[1]], 
                 [top_left_corner[0], top_left_corner[1]]]
+        '''
 
         # Add each coordinate to the correct group depending on which range the
         # angle from the centroid origin falls in
         for line_coord in line_coords:
-            angle = atan2(-(line_coord - centroid)[1], 
-                    (line_coord - centroid)[0])
-
             # Skip if coordinate is a corner
             if (line_coord == top_left_corner).all() or \
                     (line_coord == top_right_corner).all() or \
@@ -249,35 +246,97 @@ def get_top_bottom_mask(lines, shape, thickness):
                     (line_coord == bottom_left_corner).all():
                 continue
 
-            if angle > top_line_angle_range[0] and \
+            angle = atan2(-(line_coord - centroid)[1], 
+                    (line_coord - centroid)[0])
+
+            if TOP_KEY in labels and angle > top_line_angle_range[0] and \
                     angle < top_line_angle_range[1]:
                 top_line.append([line_coord[0], line_coord[1]])
-            
-            if angle > right_line_angle_range[0] and \
-                    angle < right_line_angle_range[1]:
-                right_line.append([line_coord[0], line_coord[1]])
-            
-            if angle > bottom_line_angle_range[0] and \
+
+            if BOTTOM_KEY in labels and angle > bottom_line_angle_range[0] and \
                     angle < bottom_line_angle_range[1]:
                 bottom_line.append([line_coord[0], line_coord[1]])
             
+            '''
+            if angle > right_line_angle_range[0] and \
+                    angle < right_line_angle_range[1]:
+                right_line.append([line_coord[0], line_coord[1]])
+
             if angle < bottom_line_angle_range[0] or \
                     angle > top_line_angle_range[1]:
                 left_line.append([line_coord[0], line_coord[1]])
+            '''
 
-        top_line = sorted(top_line, key=lambda k: [k[0], k[1]])
-        bottom_line = sorted(bottom_line, key=lambda k: [k[0], k[1]])
+        if TOP_KEY in labels:
+            label_coords[TOP_KEY].append(sorted(top_line, 
+                key=lambda k: [k[0], k[1]]))
 
-        top_line_image = cv2.polylines(top_line_image, 
-                [np.array(top_line, np.int32)], not LINES_CLOSED, TOP_LINE_COLOR, 
-                thickness=thickness)
-        bottom_line_image = cv2.polylines(bottom_line_image, 
-                [np.array(bottom_line, np.int32)], not LINES_CLOSED, 
-                BOTTOM_LINE_COLOR, thickness=thickness)
+        if BOTTOM_KEY in labels:
+            label_coords[BOTTOM_KEY].append(sorted(bottom_line, 
+                key=lambda k: [k[0], k[1]]))
 
-    overlap = cv2.bitwise_or(top_line_image, bottom_line_image)
+    return label_coords
 
-    return overlap
+'''
+Produce a mask for (a) specific side(s) of the bounding box of each text line.
+
+labels: a set of which elements of the text line to obtain coordinates for.
+page: the XML page element to search for baselines in.
+thickness: the thickness of the lines in the mask.
+image: the document image.
+image_option: the type of image to impose the mask onto.
+'''
+def get_line_mask(labels, page, thickness, image, image_option):
+    lines = get_line_coords(page, NAMESPACE_GT)
+    image_height = int(page.get(HEIGHT_TAG))
+    image_width = int(page.get(WIDTH_TAG))
+    image_shape = (image_height, image_width, CHANNELS)
+
+    coords = get_label_coords(labels, lines)
+    mask = None if image is not None else np.zeros(image_shape, dtype=np.uint8)
+    redscale_mask = None
+    
+    if image is not None and image_option == REDSCALE_IMAGE:
+        grayscale = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        redscale_mask = np.zeros(image_shape, dtype=np.uint8)
+
+        # Feed inverted grayscale value to red channel
+        for i in range(grayscale.shape[0]):
+            for j in range(grayscale.shape[1]):
+                redscale_mask[i][j][0] = 255 - grayscale[i][j]
+
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) if image is not None \
+            else None
+
+    if BASELINE_KEY in labels:
+        baselines = get_baseline_coords(page, NAMESPACE_GT)
+        coords[BASELINE_KEY] = baselines
+
+    for label in labels:
+        for line in coords[label]:
+            if image is not None:
+                if image_option == ORIGINAL_IMAGE:
+                    cv2.polylines(image, [np.array(line, np.int32)], 
+                            not LINES_CLOSED, LINE_COLORS[label], 
+                            thickness=thickness)
+                elif image_option == REDSCALE_IMAGE:
+                    redscale_mask += cv2.polylines(np.zeros(image_shape, 
+                        dtype=np.uint8), [np.array(line, np.int32)], 
+                        not LINES_CLOSED, LINE_COLORS[label], 
+                        thickness=thickness)
+
+            else:
+                mask += cv2.polylines(np.zeros(image_shape, dtype=np.uint8),
+                    [np.array(line, np.int32)], not LINES_CLOSED, 
+                    LINE_COLORS[label], thickness=thickness)
+
+    if image is not None:
+        if image_option == ORIGINAL_IMAGE:
+            return image
+        elif image_option == REDSCALE_IMAGE:
+            return redscale_mask
+    
+    return mask
 
 '''
 Run the labeling tool with the given arguments.
@@ -285,34 +344,43 @@ Run the labeling tool with the given arguments.
 argv: command line arguments.
 '''
 def main(argv):
-    parser = argparse.ArgumentParser(description="A tool to produce masks for \
-            document images. Currently only supports top and bottom lines of \
-            text line bounding boxes.")
+    parser = argparse.ArgumentParser(description="A tool to produce text " \
+            "line masks for document images.")
     parser.add_argument("gt_dir", help="The ground truth directory.")
+    parser.add_argument("img_dir", help="The image directory.")
     parser.add_argument("out_dir", help="The desired output directory.")
+    parser.add_argument("labels", help="Elements of text line to produce " \
+            "mask for.", type=str, nargs='+', choices=[TOP_KEY, BOTTOM_KEY, 
+                BASELINE_KEY])
     parser.add_argument("-t", "--thickness", help="Line thickness for the \
             output mask.", default=THICKNESS, type=int, choices=range(1, 
                 THICKNESS + 1))
+    parser.add_argument("-i", "--image", help="Impose mask onto image.", 
+            type=str, choices=[NO_IMAGE, ORIGINAL_IMAGE, REDSCALE_IMAGE],
+            default=NO_IMAGE)
     args = parser.parse_args(argv)
     gt_dir = args.gt_dir
+    img_dir = args.img_dir
     out_dir = args.out_dir
+    labels = set(args.labels)
     thickness = args.thickness
+    image_option = args.image
+
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
 
     for filename in os.listdir(gt_dir):
         print("Labeling " + filename + "...")
 
         gt_file = open(gt_dir + "/" + filename, 'r')
-
+        image = None if image_option == NO_IMAGE else \
+                cv2.imread(img_dir + "/" + filename.replace(".xml", ".png"))
         gt_page = et.parse(gt_file).getroot().find(PAGE_TAG, NAMESPACE_GT)
-        gt_lines = get_line_coords(gt_page, NAMESPACE_GT)
-        gt_baselines = get_baseline_coords(gt_page, NAMESPACE_GT)
-        gt_image_height = int(gt_page.get(HEIGHT_TAG))
-        gt_image_width = int(gt_page.get(WIDTH_TAG))
-        gt_image_shape = (gt_image_height, gt_image_width)
 
-        cv2.imwrite(out_dir + "/" + filename.replace(".xml", ".png"),
-                cv2.cvtColor(get_top_bottom_mask(gt_lines, gt_image_shape, 
-                    thickness), cv2.COLOR_RGB2BGR))
+        mask = get_line_mask(labels, gt_page, thickness, image, image_option)
+
+        cv2.imwrite(out_dir + "/"+ filename.replace(".xml", ".png"),
+                cv2.cvtColor(mask, cv2.COLOR_RGB2BGR))
 
         gt_file.close()
 
