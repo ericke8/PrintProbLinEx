@@ -74,7 +74,6 @@ Then, use `./batch_line_splines.R` with the `rowsumdump` directory as input, so 
 **tesseract.py** - Line extraction using Tesseract 4
 
 ### dhSegment:
-**dhSegment folder** - UNUSED
 **label.py** - Command line tool for producing color masks of images taking PAGEXML as input
 **getSplits.py** - Command line tool for randomly splitting data into portions (for train, val, and test)
 
