@@ -47,3 +47,34 @@ Then, use `./batch_line_splines.R` with the `rowsumdump` directory as input, so 
 
 ## Method 2: Trough Finding:
 1. 
+
+## Index
+
+### Line Splines (coded in R and python, old approach not made by us):
+**rowsumdump.py** - Script to dump the row sums of an image for use in line splines \
+**line_splines.R** - Script to fit a curve onto the histogram projection and output line cuts in a CSV format of start, end \
+**batchrowsumdump.py** - Tool to run rowsumdump on a batch of images \
+**batchLineSplines.R** - Tool to run line splines on a batch of images and output line CSV files \
+**ImageLines.ipynb** - Using a lines CSV file (formatted as pairs of start,end) to display the cut lines of an image \
+**evaluateLineSplines.ipynb**
+
+### Fixed line height, R and D statistical approach:
+**RDSolMeans.ipynb** - Using an image, finds the histogram projections and visuals, as well as experiments with fixed line heights and offsets, displays the cuts on the image \
+**cutLines.ipynb** - Using an image, tries to find the best line height and offset to minimize distances from ground truth, displays visuals \
+**meanHistogram.ipyn**b - Using an image and a lines CSV (formatted as list of line splits), displays the mean histogram of all lines \
+**rowImages.ipynb** - Using an image and a lines CSV file (formatted as a list of line split locations), display the individual row images
+
+### Trough Finding method:
+**TroughFinding.ipynb** - Using an image, applies the trough finding method and visualizes the cuts (better than RDSolMeans) \
+**troughFinding.py** - Command line tool to apply the trough finding method and output (incomplete) \
+**evaluateTroughFinding.ipynb** - Using an image, applies the trough finding method and compares it with the ground truth cuts with visualization
+**evaluateTroughFindingBoxes.ipynb**
+
+### Tesseract:
+**tesseract.py** - Line extraction using Tesseract 4
+
+### dhSegment:
+**dhSegment folder** - UNUSED
+**label.py** - Command line tool for producing color masks of images taking PAGEXML as input
+**getSplits.py** - Command line tool for randomly splitting data into portions (for train, val, and test)
+
